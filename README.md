@@ -23,6 +23,7 @@ Protótipo inicial em HTML + CSS + JavaScript puro.
 - `index.html` — página principal + HUD Multi.
 - `styles.css` — tela, fundo e HUD.
 - `cards.js` — catálogo das 27 cartas.
+- `session-meta.js` — meta-progressão da sessão (fragmentos e loja).
 - `app.js` — jogo, colisão, Multi, draft e render.
 
 ## API global
@@ -33,6 +34,7 @@ SemiDonutPrototype.getProjectiles()
 SemiDonutPrototype.getMulti()
 SemiDonutPrototype.getDescent()
 SemiDonutPrototype.getPlayer()
+SemiDonutPrototype.getSessionMeta()
 SemiDonutPrototype.getDraft()
 SemiDonutPrototype.resetMulti()
 SemiDonutPrototype.restart()
@@ -62,3 +64,14 @@ SemiDonutPrototype.rebuild()
 
 - Linha vermelha tracejada = base do canhão.
 - Qualquer quadradinho **ativo** que atinge essa linha encerra a partida; use **Jogar de novo** ou `SemiDonutPrototype.restart()`.
+
+## Meta (sessão)
+
+Roguelike leve **só enquanto a aba estiver aberta** (F5 zera fragmentos e compras).
+
+- Ao **game over**, você ganha **Fragmentos de Setor** (nível, tier Multi, linhas descidas; +10 se bater recorde da sessão).
+- No overlay: resumo da run, total de fragmentos e **Loja da sessão** (XP, descida, reroll no 1º draft, Freio inicial, ritual de bênção).
+- **Ritual de Início**: antes de cada nova run, escolha 1 de 3 bênções fracas (só naquela partida).
+- HUD no canto superior direito: fragmentos acumulados.
+
+`getSessionMeta()` retorna `{ fragments, stacks, bestLevel, bestMultiTier, lastAward, shop, bonuses }`.

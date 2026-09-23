@@ -43,4 +43,37 @@ assert.ok(fireIntervalSec >= 0.05 && Number.isFinite(fireIntervalSec));
 assert.equal(GameCards.playerXpToNext(1), 83);
 assert.ok(Math.abs(GameCards.scalePlayerXp(10) - 1.4) < 1e-9);
 
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const SessionMeta = require("../session-meta.js");
+
+const emptyMeta = SessionMeta.createSessionMeta();
+const frag = SessionMeta.computeRunFragments(
+  { level: 3, multiTier: 2, rowsDropped: 16 },
+  emptyMeta
+);
+assert.equal(frag.total, 32);
+assert.equal(frag.beatLevel, true);
+assert.equal(frag.beatTier, true);
+
+const noRecord = SessionMeta.computeRunFragments(
+  { level: 3, multiTier: 2, rowsDropped: 16 },
+  { bestLevel: 5, bestMultiTier: 5 }
+);
+assert.equal(noRecord.total, 22);
+
+const awarded = SessionMeta.awardRunEnd(emptyMeta, {
+  level: 3,
+  multiTier: 2,
+  rowsDropped: 16
+});
+assert.equal(awarded.fragments, 32);
+assert.equal(emptyMeta.fragments, 32);
+
+const buy = SessionMeta.tryPurchase(emptyMeta, "meta_xp");
+assert.equal(buy.ok, true);
+assert.equal(emptyMeta.stacks.meta_xp, 1);
+assert.equal(SessionMeta.getSessionBonuses(emptyMeta).xpMult, 1.05);
+
 console.log("PASS test:unit cadencia_frenetica");
+console.log("PASS test:unit session_meta_fragments");

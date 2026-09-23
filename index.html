@@ -19,6 +19,10 @@
       <div id="playerXpMeta" class="player-hud__meta">0 / 19 XP</div>
       <div id="cardInventory" class="card-inventory" aria-label="Cartas obtidas"></div>
     </div>
+    <div id="sessionHud" class="session-hud" aria-live="polite">
+      <span class="session-hud__label">FRAGMENTOS</span>
+      <span id="sessionFragments" class="session-hud__value">0</span>
+    </div>
     <div id="multiHud" class="multi-hud" aria-live="polite">
       <div class="multi-hud__top">
         <span class="multi-hud__label">MULTI</span>
@@ -32,8 +36,18 @@
     <div id="gameOverOverlay" class="game-over" hidden>
       <div class="game-over__panel">
         <p class="game-over__title">GAME OVER</p>
-        <p class="game-over__text">O semi-donut encostou na base do canhão.</p>
+        <p id="gameOverReason" class="game-over__text"></p>
+        <div id="gameOverRecap" class="game-over__recap"></div>
+        <div id="gameOverFragments" class="game-over__fragments"></div>
+        <div id="gameOverShop" class="game-over__shop" aria-label="Loja da sessão"></div>
         <button id="gameOverRestart" type="button" class="game-over__btn">Jogar de novo</button>
+      </div>
+    </div>
+    <div id="sessionBlessingOverlay" class="level-draft session-blessing" hidden>
+      <div class="level-draft__panel">
+        <p class="level-draft__title">Bênção de início</p>
+        <p class="level-draft__subtitle">Escolha 1 bônus para esta run (válido só nesta partida).</p>
+        <div id="sessionBlessingChoices" class="level-draft__choices"></div>
       </div>
     </div>
     <div id="levelDraftOverlay" class="level-draft" hidden>
@@ -53,6 +67,7 @@
   </main>
 
   <script src="cards.js"></script>
+  <script src="session-meta.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

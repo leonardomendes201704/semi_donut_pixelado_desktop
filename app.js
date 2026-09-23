@@ -84,6 +84,14 @@
   let comboKillTimestamps = [];
   let lastRowsDroppedForTick = 0;
 
+  const SessionMeta = window.SessionMeta;
+  let sessionMeta = SessionMeta.createSessionMeta();
+  let sessionXpMult = 1;
+  let sessionDescentMult = 1;
+  let runDraftCount = 0;
+  let runFirstDraftRerollPending = false;
+  let blessingState = { active: false, options: [] };
+
   const playerLevelEl = document.getElementById("playerLevel");
   const playerXpFillEl = document.getElementById("playerXpFill");
   const playerXpMetaEl = document.getElementById("playerXpMeta");
@@ -140,6 +148,161 @@
     setDraftUiOpen(false);
     syncPlayerHud();
     syncCardInventory();
+  }
+
+  function getRunEndStats() {
+    return {
+      level: playerProgress.level,
+      multiTier: multiState.tier,
+      rowsDropped
+    };
+  }
+
+  function syncSessionHud() {
+    if (sessionFragmentsEl) {
+      sessionFragmentsEl.textContent = String(sessionMeta.fragments);
+    }
+  }
+
+  function applySessionBonusesToRun() {
+    const b = SessionMeta.getSessionBonuses(sessionMeta);
+    sessionXpMult = b.xpMult;
+    sessionDescentMult = b.descentMult;
+    if (b.startBrakeCharge) {
+      runModifiers.emergencyBrakeCharges += 1;
+    }
+    if (b.pendingFirstDraftReroll) {
+      runFirstDraftRerollPending = true;
+    }
+  }
+
+  function renderGameOverOverlay() {
+    const stats = sessionMeta.lastAward?.stats;
+    if (gameOverReasonEl) {
+      gameOverReasonEl.textContent =
+        gameOverReason || "A run terminou.";
+    }
+    if (gameOverRecapEl && stats) {
+      const multiLabel = "×" + (stats.multiTier + 1);
+      gameOverRecapEl.innerHTML =
+        "Nível <strong>" +
+        stats.level +
+        "</strong> · Multi " +
+        multiLabel +
+        " · Linhas <strong>" +
+        stats.rowsDropped +
+        "</strong><br>Recorde da sessão: nível " +
+        sessionMeta.bestLevel +
+        " · Multi ×" +
+        (sessionMeta.bestMultiTier + 1);
+    }
+    if (gameOverFragmentsEl && sessionMeta.lastAward) {
+      const a = sessionMeta.lastAward;
+      let extra = "";
+      if (a.beatLevel || a.beatTier) {
+        extra = " (+10 recorde da sessão)";
+      }
+      gameOverFragmentsEl.textContent =
+        "+" +
+        a.fragments +
+        " fragmentos nesta run" +
+        extra +
+        " · Total na sessão: " +
+        sessionMeta.fragments +
+        " (some ao recarregar a página)";
+    }
+    renderSessionShop();
+  }
+
+  function renderSessionShop() {
+    if (!gameOverShopEl) return;
+    const rows = SessionMeta.getShopRows(sessionMeta);
+    gameOverShopEl.innerHTML =
+      '<p class="game-over__shop-title">LOJA DA SESSÃO</p>';
+    for (const row of rows) {
+      const item = document.createElement("div");
+      item.className = "game-over__shop-item";
+      const name = document.createElement("span");
+      name.className = "game-over__shop-name";
+      name.textContent =
+        row.name + " (" + row.stacks + "/" + row.maxStacks + ")";
+      item.appendChild(name);
+      const desc = document.createElement("span");
+      desc.className = "game-over__shop-desc";
+      desc.textContent = row.desc;
+      item.appendChild(desc);
+      if (row.atMax) {
+        const tag = document.createElement("span");
+        tag.className = "game-over__shop-tag";
+        tag.textContent = "Máximo";
+        item.appendChild(tag);
+      } else {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "game-over__shop-buy";
+        btn.textContent = "Comprar · " + row.price;
+        btn.disabled = !row.canBuy;
+        btn.dataset.shopId = row.id;
+        btn.addEventListener("click", () => {
+          const result = SessionMeta.tryPurchase(sessionMeta, row.id);
+          if (result.ok) {
+            renderGameOverOverlay();
+            syncSessionHud();
+          }
+        });
+        item.appendChild(btn);
+      }
+      gameOverShopEl.appendChild(item);
+    }
+  }
+
+  function renderBlessingUI() {
+    if (!sessionBlessingChoicesEl) return;
+    sessionBlessingChoicesEl.innerHTML = "";
+    for (const opt of blessingState.options) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "level-draft__card";
+      btn.innerHTML =
+        '<span class="level-draft__card-name">' +
+        opt.name +
+        '</span><span class="level-draft__card-desc">' +
+        opt.desc +
+        "</span>";
+      btn.addEventListener("click", () => pickStartBlessing(opt.id));
+      sessionBlessingChoicesEl.appendChild(btn);
+    }
+  }
+
+  function openStartBlessing() {
+    blessingState.options = SessionMeta.rollStartBlessings(3);
+    blessingState.active = true;
+    draftPaused = true;
+    projectiles.length = 0;
+    renderBlessingUI();
+    if (sessionBlessingOverlayEl) sessionBlessingOverlayEl.hidden = false;
+    setDraftUiOpen(true);
+  }
+
+  function pickStartBlessing(blessingId) {
+    SessionMeta.applyStartBlessing(runModifiers, blessingId);
+    blessingState.active = false;
+    draftPaused = false;
+    if (sessionBlessingOverlayEl) sessionBlessingOverlayEl.hidden = true;
+    setDraftUiOpen(false);
+    syncCardInventory();
+  }
+
+  function getSessionMetaSnapshot() {
+    return {
+      fragments: sessionMeta.fragments,
+      stacks: { ...sessionMeta.stacks },
+      bestLevel: sessionMeta.bestLevel,
+      bestMultiTier: sessionMeta.bestMultiTier,
+      lastAward: sessionMeta.lastAward,
+      shop: SessionMeta.getShopRows(sessionMeta),
+      bonuses: SessionMeta.getSessionBonuses(sessionMeta)
+    };
   }
 
   function getPlayerSnapshot() {
@@ -273,8 +436,15 @@
     fireAccumulator = 0;
     descentAccumulator = 0;
     draftState.rerollUsed = false;
-    draftState.rerollAvailable = freeDraftReroll;
+    let sessionReroll = false;
+    if (runDraftCount === 0 && runFirstDraftRerollPending) {
+      sessionReroll = true;
+      runFirstDraftRerollPending = false;
+      sessionMeta.pendingFirstDraftReroll = false;
+    }
+    draftState.rerollAvailable = freeDraftReroll || sessionReroll;
     freeDraftReroll = false;
+    runDraftCount += 1;
     draftState.options = GameCards.rollDraftOptions(ownedCards, 3);
     renderDraftUI();
     if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = false;
@@ -337,6 +507,7 @@
 
   function grantPlayerXp(amount) {
     if (amount <= 0) return;
+    amount *= sessionXpMult;
     playerProgress.xp += amount;
     let leveled = false;
     while (
@@ -600,7 +771,14 @@
   const cannonDebugAngleEl = document.getElementById("cannonDebugAngle");
   const cannonDebugMetaEl = document.getElementById("cannonDebugMeta");
   const gameOverOverlayEl = document.getElementById("gameOverOverlay");
+  const gameOverReasonEl = document.getElementById("gameOverReason");
+  const gameOverRecapEl = document.getElementById("gameOverRecap");
+  const gameOverFragmentsEl = document.getElementById("gameOverFragments");
+  const gameOverShopEl = document.getElementById("gameOverShop");
   const gameOverRestartEl = document.getElementById("gameOverRestart");
+  const sessionFragmentsEl = document.getElementById("sessionFragments");
+  const sessionBlessingOverlayEl = document.getElementById("sessionBlessingOverlay");
+  const sessionBlessingChoicesEl = document.getElementById("sessionBlessingChoices");
 
   let shapeBounds = { minY: 0, maxY: 0 };
   let shapeOffsetY = 0;
@@ -962,6 +1140,9 @@
     draftPaused = false;
     if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
     setDraftUiOpen(false);
+    SessionMeta.awardRunEnd(sessionMeta, getRunEndStats());
+    syncSessionHud();
+    renderGameOverOverlay();
     if (gameOverOverlayEl) {
       gameOverOverlayEl.hidden = false;
     }
@@ -984,7 +1165,8 @@
     const stepSeconds = Math.max(
       0.05,
       (CONFIG.descent.intervalMs / 1000) *
-        Math.max(0.05, runModifiers.descentIntervalMult || 1)
+        Math.max(0.05, runModifiers.descentIntervalMult || 1) *
+        Math.max(0.05, sessionDescentMult)
     );
 
     if (descentPauseTimer > 0) {
@@ -1040,13 +1222,21 @@
     fireAccumulator = 0;
     shapeRotationRad = 0;
     shapeRotationDir = 1;
+    runDraftCount = 0;
+    blessingState.active = false;
+    if (sessionBlessingOverlayEl) sessionBlessingOverlayEl.hidden = true;
     resetMulti();
     resetPlayerRun();
+    applySessionBonusesToRun();
     buildCells();
     resetDescentPosition();
     Game.markStaticDirty();
     if (gameOverOverlayEl) {
       gameOverOverlayEl.hidden = true;
+    }
+    setDraftUiOpen(false);
+    if (SessionMeta.getSessionBonuses(sessionMeta).blessingUnlocked) {
+      openStartBlessing();
     }
   }
 
@@ -1694,6 +1884,7 @@
     getDescent: getDescentSnapshot,
     getPlayer: getPlayerSnapshot,
     getDraft: getDraftSnapshot,
+    getSessionMeta: getSessionMetaSnapshot,
     restart: restartGame,
     rebuild: () => {
       buildCells();
@@ -1759,6 +1950,7 @@
   resetDescentPosition();
   syncMultiHud();
   syncPlayerHud();
+  syncSessionHud();
   Game.markStaticDirty();
   if (gameOverOverlayEl) {
     gameOverOverlayEl.hidden = true;
