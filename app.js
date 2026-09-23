@@ -104,9 +104,6 @@
     grantDraftReroll() {
       freeDraftReroll = true;
     },
-    shiftDonutUp(rows) {
-      shapeOffsetY -= rows * CONFIG.pixelSize;
-    },
     applyMysteryCard() {
       GameCards.applyMysteryCard(ownedCards, runModifiers, cardContext);
       syncCardInventory();
@@ -557,7 +554,7 @@
     multiState.meter += gained;
     multiState.lifetimeWeighted += gained;
     pulseMultiHud();
-    grantPlayerXp(gained);
+    grantPlayerXp(GameCards.scalePlayerXp(gained));
 
     let tierUps = 0;
     let req = consumeMultiRequiredDiscount(
@@ -837,8 +834,7 @@
     computeShapeBounds();
     shapeOffsetY =
       -shapeBounds.maxY -
-      CONFIG.descent.startGapAbove -
-      runModifiers.startRowsBonus * CONFIG.pixelSize;
+      CONFIG.descent.startGapAbove;
     descentAccumulator = 0;
     rowsDropped = 0;
     lastRowsDroppedForTick = 0;
@@ -857,12 +853,6 @@
 
   function setGameOver(reason) {
     if (gameOver) return;
-    if (runModifiers.secondChance && !runModifiers.secondChanceUsed) {
-      runModifiers.secondChanceUsed = true;
-      shapeOffsetY -= CONFIG.pixelSize * 4;
-      syncCardInventory();
-      return;
-    }
     gameOver = true;
     gameOverReason = reason;
     pendingDrafts = 0;

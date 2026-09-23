@@ -2,6 +2,14 @@
   "use strict";
 
   const RARITY_WEIGHT = { common: 60, uncommon: 30, rare: 10 };
+
+  /** XP de nível usa fração do peso Multi (perfuração mata muitos pixels por tiro). */
+  const PLAYER_XP = {
+    weightFactor: 0.14,
+    base: 58,
+    linear: 22,
+    quadratic: 3.1
+  };
   const MYSTERY_POOL = [
     "rajada_inicial",
     "cannao_fixo",
@@ -30,8 +38,6 @@
     { id: "gravidade_leve", name: "Gravidade Leve", rarity: "common", maxStacks: 4, desc: "Descida 25% mais lenta.", apply(m) { m.descentIntervalMult *= 1.25; } },
     { id: "freio_emergencia", name: "Freio de Emergência", rarity: "rare", maxStacks: 2, desc: "+1 carga: pausa descida 8s (clique no inventário).", apply(m) { m.emergencyBrakeCharges += 1; } },
     { id: "linha_recuada", name: "Linha Recuada", rarity: "uncommon", maxStacks: 3, desc: "Linha de game over sobe 30px.", apply(m) { m.loseLineOffsetY -= 30; } },
-    { id: "segundo_chance", name: "Segundo Chance", rarity: "rare", maxStacks: 1, desc: "1 revive ao encostar na base.", apply(m) { m.secondChance = true; } },
-    { id: "entrada_tardia", name: "Entrada Tardia", rarity: "uncommon", maxStacks: 1, desc: "Donut começa 8 linhas mais alto.", apply(m, ctx) { m.startRowsBonus += 8; ctx.shiftDonutUp(8); } },
     { id: "tick_extra", name: "Tick Extra", rarity: "uncommon", maxStacks: 3, desc: "A cada 10 linhas: +3s sem descer.", apply(m) { m.tickExtraEnabled = true; } },
     { id: "explosao_setorial", name: "Explosão Setorial", rarity: "uncommon", maxStacks: 3, desc: "Azul: explosão 8px.", apply(m) { m.blueExplosion = true; } },
     { id: "corrente_eletrica", name: "Corrente Elétrica", rarity: "uncommon", maxStacks: 3, desc: "Roxo: 30% de chain.", apply(m) { m.purpleChain = true; } },
@@ -60,9 +66,6 @@
       descentIntervalMult: 1,
       emergencyBrakeCharges: 0,
       loseLineOffsetY: 0,
-      secondChance: false,
-      secondChanceUsed: false,
-      startRowsBonus: 0,
       tickExtraEnabled: false,
       blueExplosion: false,
       purpleChain: false,
@@ -173,7 +176,6 @@
     if (getStacks(owned, "blue_explosion") > 0) modifiers.blueExplosion = true;
     modifiers.blueExplosion = getStacks(owned, "explosao_setorial") > 0;
     modifiers.purpleChain = getStacks(owned, "corrente_eletrica") > 0;
-    modifiers.secondChance = getStacks(owned, "segundo_chance") > 0 && !modifiers.secondChanceUsed;
     modifiers.emergencyBrakeCharges = getStacks(owned, "freio_emergencia");
     modifiers.ghostLaserCharges = getStacks(owned, "laser_fantasma");
     modifiers.borderCleanCharges = getStacks(owned, "limpeza_borda");
@@ -188,8 +190,15 @@
     applyCardPick,
     applyMysteryCard,
     getStacks,
+    scalePlayerXp(multiWeightSum) {
+      if (multiWeightSum <= 0) return 0;
+      return multiWeightSum * PLAYER_XP.weightFactor;
+    },
     playerXpToNext(level) {
-      return Math.round(12 + 6 * level + level * level * 1.1);
+      const lv = Math.max(1, level);
+      return Math.round(
+        PLAYER_XP.base + PLAYER_XP.linear * lv + lv * lv * PLAYER_XP.quadratic
+      );
     }
   };
 })();

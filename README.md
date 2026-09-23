@@ -22,7 +22,7 @@ Protótipo inicial em HTML + CSS + JavaScript puro.
 
 - `index.html` — página principal + HUD Multi.
 - `styles.css` — tela, fundo e HUD.
-- `cards.js` — catálogo das 30 cartas.
+- `cards.js` — catálogo das 28 cartas.
 - `app.js` — jogo, colisão, Multi, draft e render.
 
 ## API global
@@ -46,7 +46,7 @@ SemiDonutPrototype.rebuild()
 
 ## Nível e draft
 
-- XP sobe com o peso das eliminações (independente do Multi).
+- XP sobe com **~14%** do peso das eliminações (Multi continua com 100%); metas por nível são bem maiores que no início do protótipo.
 - Cada **nível** abre draft: **3 cartas**, escolha **1**; jogo pausa e projéteis somem.
 - **Loja de Bolso** concede **1 reroll** no próximo draft.
 - Inventário (canto superior esquerdo): clique em **Freio / Laser / Limpeza** para usar cargas.

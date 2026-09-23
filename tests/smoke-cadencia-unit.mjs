@@ -20,7 +20,6 @@ const noopCtx = {
   lockCannonSweep() {},
   applyNextMultiDiscount() {},
   grantDraftReroll() {},
-  shiftDonutUp() {},
   applyMysteryCard() {}
 };
 
@@ -40,5 +39,8 @@ const fireIntervalSec = Math.max(
   (300 / 1000) * Math.max(0.28, modifiers.fireIntervalMult)
 );
 assert.ok(fireIntervalSec >= 0.05 && Number.isFinite(fireIntervalSec));
+
+assert.equal(GameCards.playerXpToNext(1), 83);
+assert.ok(Math.abs(GameCards.scalePlayerXp(10) - 1.4) < 1e-9);
 
 console.log("PASS test:unit cadencia_frenetica");

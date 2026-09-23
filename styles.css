@@ -84,11 +84,11 @@ body {
 
 .card-inventory {
   margin-top: 8px;
-  max-height: 72px;
+  max-height: 96px;
   overflow-y: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 6px;
 }
 
 .card-chip {
@@ -99,6 +99,13 @@ body {
   background: rgba(255, 255, 255, 0.05);
   color: rgba(230, 240, 255, 0.9);
   cursor: default;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .card-chip--usable {
