@@ -48,6 +48,7 @@ SemiDonutPrototype.rebuild()
 
 - XP sobe com **~14%** do peso das eliminações (Multi continua com 100%); metas por nível são bem maiores que no início do protótipo.
 - Cada **nível** abre draft: **3 cartas**, escolha **1**; jogo pausa e projéteis somem.
+- A partir do **nível 5**, o semi-donut **oscila ±45°** em torno do centro do arco (colisão e game over acompanham a rotação).
 - **Loja de Bolso** concede **1 reroll** no próximo draft.
 - Inventário (canto superior esquerdo): clique em **Freio / Laser / Limpeza** para usar cargas.
 

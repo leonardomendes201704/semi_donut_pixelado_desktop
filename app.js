@@ -54,6 +54,12 @@
     descent: {
       intervalMs: 500,
       startGapAbove: 24
+    },
+
+    shapeRotation: {
+      minLevel: 5,
+      limitRad: Math.PI / 4,
+      halfCycleSeconds: 3.2
     }
   };
 
@@ -378,9 +384,11 @@
     let bestD = maxDist * maxDist;
     for (const cell of cellLookup.values()) {
       if (!cell.active) continue;
-      const wx = cell.cx;
-      const wy = cell.cy + shapeOffsetY;
-      const d = (wx - px) ** 2 + (wy - py) ** 2;
+      const center = rotateWorldPoint(
+        cell.cx,
+        cell.cy + shapeOffsetY
+      );
+      const d = (center.x - px) ** 2 + (center.y - py) ** 2;
       if (d < bestD) {
         bestD = d;
         best = cell;
@@ -402,6 +410,9 @@
   }
 
   function explodeAtWorld(wx, wy, radius, killsOut) {
+    const unrot = unrotateWorldPoint(wx, wy);
+    wx = unrot.x;
+    wy = unrot.y;
     const { inset, size } = getCellHitRect();
     const localPy = wy - shapeOffsetY;
     const pitch = CONFIG.pixelSize;
@@ -444,19 +455,16 @@
 
   function cleanLowestActiveRow() {
     let maxBottom = -Infinity;
-    const { inset, size } = getCellHitRect();
-    const rowCells = [];
     for (const cell of cellLookup.values()) {
       if (!cell.active) continue;
-      const bottom = cell.y + inset + size + shapeOffsetY;
+      const bottom = cellBottomWorldY(cell);
       if (bottom > maxBottom) maxBottom = bottom;
     }
     if (maxBottom === -Infinity) return;
     const kills = [];
     for (const cell of cellLookup.values()) {
       if (!cell.active) continue;
-      const bottom = cell.y + inset + size + shapeOffsetY;
-      if (Math.abs(bottom - maxBottom) < 0.5) {
+      if (Math.abs(cellBottomWorldY(cell) - maxBottom) < 0.5) {
         killCellAtWorld(
           cell,
           cell.cx,
@@ -481,7 +489,8 @@
       x += dir.x * step;
       y += dir.y * step;
       if (x < 0 || x > CONFIG.virtualWidth || y < 0 || y > CONFIG.virtualHeight) break;
-      const result = killCellsHitByProjectile(x, y, cannon.projectileRadius);
+      const hit = unrotateWorldPoint(x, y);
+      const result = killCellsHitByProjectile(hit.x, hit.y, cannon.projectileRadius);
       if (result.kills.length) {
         kills.push(...result.kills);
       }
@@ -517,9 +526,10 @@
     if (allowCardExtras) {
       for (const kill of kills) {
         if (runModifiers.blueExplosion && kill.sectorIndex === 4) {
+          const fx = rotateWorldPoint(kill.cx, kill.cy + shapeOffsetY);
           explodeAtWorld(
-            kill.cx,
-            kill.cy + shapeOffsetY,
+            fx.x,
+            fx.y,
             8,
             extras
           );
@@ -541,8 +551,9 @@
       const weight = getKillWeight(kill.sectorIndex);
       gained += weight;
       multiState.lastSectorIndex = kill.sectorIndex;
-      spawnFloatingWeight(kill.cx, kill.cy + shapeOffsetY, weight, kill.sectorIndex);
-      spawnImpactRing(kill.cx, kill.cy + shapeOffsetY, kill.sectorIndex);
+      const fx = rotateWorldPoint(kill.cx, kill.cy + shapeOffsetY);
+      spawnFloatingWeight(fx.x, fx.y, weight, kill.sectorIndex);
+      spawnImpactRing(fx.x, fx.y, kill.sectorIndex);
       comboKillTimestamps.push(now);
     }
 
@@ -592,6 +603,8 @@
 
   let shapeBounds = { minY: 0, maxY: 0 };
   let shapeOffsetY = 0;
+  let shapeRotationRad = 0;
+  let shapeRotationDir = 1;
   let descentAccumulator = 0;
   let rowsDropped = 0;
   let gameOver = false;
@@ -796,6 +809,7 @@
     },
 
     update(dt) {
+      updateShapeRotation(dt);
       updateDescent(dt);
       updateCannon(dt);
       updateEffects(dt);
@@ -830,6 +844,84 @@
     shapeBounds = { minY, maxY };
   }
 
+  function isShapeRotationActive() {
+    return playerProgress.level >= CONFIG.shapeRotation.minLevel;
+  }
+
+  function getShapeRotationRad() {
+    return isShapeRotationActive() ? shapeRotationRad : 0;
+  }
+
+  function getShapePivotY() {
+    return CONFIG.centerY + shapeOffsetY;
+  }
+
+  function rotateWorldPoint(ux, uy) {
+    const angle = getShapeRotationRad();
+    if (Math.abs(angle) < 1e-6) {
+      return { x: ux, y: uy };
+    }
+    const px = CONFIG.centerX;
+    const py = getShapePivotY();
+    const dx = ux - px;
+    const dy = uy - py;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      x: px + dx * cos - dy * sin,
+      y: py + dx * sin + dy * cos
+    };
+  }
+
+  function unrotateWorldPoint(wx, wy) {
+    const angle = getShapeRotationRad();
+    if (Math.abs(angle) < 1e-6) {
+      return { x: wx, y: wy };
+    }
+    const px = CONFIG.centerX;
+    const py = getShapePivotY();
+    const dx = wx - px;
+    const dy = wy - py;
+    const cos = Math.cos(-angle);
+    const sin = Math.sin(-angle);
+    return {
+      x: px + dx * cos - dy * sin,
+      y: py + dx * sin + dy * cos
+    };
+  }
+
+  function cellBottomWorldY(cell) {
+    const { inset, size } = getCellHitRect();
+    const bottom = rotateWorldPoint(
+      cell.cx,
+      cell.y + inset + size + shapeOffsetY
+    );
+    return bottom.y;
+  }
+
+  function updateShapeRotation(dt) {
+    if (gameOver || draftPaused || !isShapeRotationActive()) {
+      if (!isShapeRotationActive()) {
+        shapeRotationRad = 0;
+        shapeRotationDir = 1;
+      }
+      return;
+    }
+
+    const limit = CONFIG.shapeRotation.limitRad;
+    const speed =
+      (limit * 2) / Math.max(0.5, CONFIG.shapeRotation.halfCycleSeconds);
+
+    shapeRotationRad += shapeRotationDir * speed * dt;
+    if (shapeRotationRad >= limit) {
+      shapeRotationRad = limit;
+      shapeRotationDir = -1;
+    } else if (shapeRotationRad <= -limit) {
+      shapeRotationRad = -limit;
+      shapeRotationDir = 1;
+    }
+  }
+
   function resetDescentPosition() {
     computeShapeBounds();
     shapeOffsetY =
@@ -847,7 +939,8 @@
       gameOverReason,
       rowsDropped,
       loseLineY: getLoseLineY(),
-      shapeBounds: { ...shapeBounds }
+      shapeBounds: { ...shapeBounds },
+      shapeRotationRad: getShapeRotationRad()
     };
   }
 
@@ -866,13 +959,11 @@
   }
 
   function checkDescentGameOver() {
-    const { inset, size } = getCellHitRect();
     const loseLineY = getLoseLineY();
 
     for (const cell of cellLookup.values()) {
       if (!cell.active) continue;
-      const bottomY = cell.y + inset + size + shapeOffsetY;
-      if (bottomY >= loseLineY) {
+      if (cellBottomWorldY(cell) >= loseLineY) {
         setGameOver("O semi-donut encostou na base do canhão.");
         return;
       }
@@ -938,6 +1029,8 @@
     impactRings.length = 0;
     tierFlash = 0;
     fireAccumulator = 0;
+    shapeRotationRad = 0;
+    shapeRotationDir = 1;
     resetMulti();
     resetPlayerRun();
     buildCells();
@@ -1057,7 +1150,8 @@
       p.x += p.vx * stepDt;
       p.y += p.vy * stepDt;
 
-      const result = killCellsHitByProjectile(p.x, p.y, hitRadius);
+      const hitPos = unrotateWorldPoint(p.x, p.y);
+      const result = killCellsHitByProjectile(hitPos.x, hitPos.y, hitRadius);
       if (!result.hit) continue;
 
       registerMultiKills(result.kills);
@@ -1081,8 +1175,9 @@
     if (!p || !p.homing || p.homing <= 0) return;
     const target = findNearestActiveCellWorld(p.x, p.y, 220);
     if (!target) return;
-    const tx = target.cx;
-    const ty = target.cy + shapeOffsetY;
+    const center = rotateWorldPoint(target.cx, target.cy + shapeOffsetY);
+    const tx = center.x;
+    const ty = center.y;
     let dx = tx - p.x;
     let dy = ty - p.y;
     const len = Math.hypot(dx, dy) || 1;
@@ -1485,7 +1580,17 @@
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
     ctx.drawImage(staticBgCanvas, 0, 0);
-    ctx.drawImage(staticCellsCanvas, 0, shapeOffsetY);
+
+    const pivotX = CONFIG.centerX;
+    const pivotY = getShapePivotY();
+    const angle = getShapeRotationRad();
+    ctx.save();
+    ctx.translate(pivotX, pivotY);
+    if (Math.abs(angle) > 1e-6) {
+      ctx.rotate(angle);
+    }
+    ctx.drawImage(staticCellsCanvas, -pivotX, -CONFIG.centerY);
+    ctx.restore();
 
     drawDangerLine();
     drawEffects();
