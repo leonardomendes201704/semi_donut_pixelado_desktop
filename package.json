@@ -1,0 +1,13 @@
+{
+  "name": "semi-donut-pixelado-desktop",
+  "private": true,
+  "scripts": {
+    "test:unit": "node tests/smoke-cadencia-unit.mjs",
+    "test:smoke": "node tests/smoke-cadencia.mjs",
+    "test": "npm run test:unit",
+    "serve": "python -m http.server 8765"
+  },
+  "devDependencies": {
+    "playwright": "1.49.0"
+  }
+}

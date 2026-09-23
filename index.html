@@ -8,6 +8,17 @@
 </head>
 <body>
   <main class="stage">
+    <div id="playerHud" class="player-hud">
+      <div class="player-hud__top">
+        <span class="player-hud__label">NÍVEL</span>
+        <span id="playerLevel" class="player-hud__level">1</span>
+      </div>
+      <div class="player-hud__bar">
+        <div id="playerXpFill" class="player-hud__fill"></div>
+      </div>
+      <div id="playerXpMeta" class="player-hud__meta">0 / 19 XP</div>
+      <div id="cardInventory" class="card-inventory" aria-label="Cartas obtidas"></div>
+    </div>
     <div id="multiHud" class="multi-hud" aria-live="polite">
       <div class="multi-hud__top">
         <span class="multi-hud__label">MULTI</span>
@@ -18,6 +29,21 @@
       </div>
       <div id="multiMeta" class="multi-hud__meta">0 / 10 → ×2</div>
     </div>
+    <div id="gameOverOverlay" class="game-over" hidden>
+      <div class="game-over__panel">
+        <p class="game-over__title">GAME OVER</p>
+        <p class="game-over__text">O semi-donut encostou na base do canhão.</p>
+        <button id="gameOverRestart" type="button" class="game-over__btn">Jogar de novo</button>
+      </div>
+    </div>
+    <div id="levelDraftOverlay" class="level-draft" hidden>
+      <div class="level-draft__panel">
+        <p id="levelDraftTitle" class="level-draft__title">Nível 2 — escolha uma carta</p>
+        <p id="levelDraftSubtitle" class="level-draft__subtitle"></p>
+        <div id="levelDraftChoices" class="level-draft__choices"></div>
+        <button id="levelDraftReroll" type="button" class="level-draft__reroll" hidden>Trocar ofertas</button>
+      </div>
+    </div>
     <canvas id="gameCanvas" aria-label="Semi donut pixelado dividido em cinco setores"></canvas>
     <div id="cannonDebug" class="cannon-debug">
       <div class="cannon-debug__label">Canhão (debug)</div>
@@ -26,6 +52,7 @@
     </div>
   </main>
 
+  <script src="cards.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

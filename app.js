@@ -49,8 +49,529 @@
     multi: {
       sectorWeight: [1.0, 1.2, 1.45, 1.75, 2.1],
       maxPierceHits: 8
+    },
+
+    descent: {
+      intervalMs: 500,
+      startGapAbove: 24
     }
   };
+
+  function getLoseLineY() {
+    return CONFIG.cannon.pivotY + runModifiers.loseLineOffsetY;
+  }
+
+  let draftPaused = false;
+  let pendingDrafts = 0;
+  let draftOpenScheduled = false;
+  let draftResumeTimer = 0;
+  let freeDraftReroll = false;
+  let draftState = { active: false, options: [], rerollUsed: false };
+  let playerProgress = { level: 1, xp: 0 };
+  let ownedCards = {};
+  let runModifiers = GameCards.createDefaultModifiers();
+  let descentPauseTimer = 0;
+  let cannonLockSweepTimer = 0;
+  let multiRequiredDiscountPending = false;
+  let multiRequiredDiscountFactor = 1;
+  let comboKillTimestamps = [];
+  let lastRowsDroppedForTick = 0;
+
+  const playerLevelEl = document.getElementById("playerLevel");
+  const playerXpFillEl = document.getElementById("playerXpFill");
+  const playerXpMetaEl = document.getElementById("playerXpMeta");
+  const cardInventoryEl = document.getElementById("cardInventory");
+  const levelDraftOverlayEl = document.getElementById("levelDraftOverlay");
+  const levelDraftTitleEl = document.getElementById("levelDraftTitle");
+  const levelDraftSubtitleEl = document.getElementById("levelDraftSubtitle");
+  const levelDraftChoicesEl = document.getElementById("levelDraftChoices");
+  const levelDraftRerollEl = document.getElementById("levelDraftReroll");
+  const stageEl = document.querySelector(".stage");
+
+  const cardContext = {
+    fireBurst(count) {
+      for (let i = 0; i < count; i++) {
+        spawnProjectileFromCannon(0);
+      }
+    },
+    lockCannonSweep(seconds) {
+      cannonLockSweepTimer = Math.max(cannonLockSweepTimer, seconds);
+    },
+    applyNextMultiDiscount(factor) {
+      multiRequiredDiscountPending = true;
+      multiRequiredDiscountFactor = factor;
+    },
+    grantDraftReroll() {
+      freeDraftReroll = true;
+    },
+    shiftDonutUp(rows) {
+      shapeOffsetY -= rows * CONFIG.pixelSize;
+    },
+    applyMysteryCard() {
+      GameCards.applyMysteryCard(ownedCards, runModifiers, cardContext);
+      syncCardInventory();
+    }
+  };
+
+  function clearDraftResumeTimer() {
+    if (!draftResumeTimer) return;
+    clearTimeout(draftResumeTimer);
+    draftResumeTimer = 0;
+  }
+
+  function resetPlayerRun() {
+    playerProgress = { level: 1, xp: 0 };
+    ownedCards = {};
+    runModifiers = GameCards.createDefaultModifiers();
+    pendingDrafts = 0;
+    clearDraftResumeTimer();
+    draftPaused = false;
+    draftState.active = false;
+    freeDraftReroll = false;
+    descentPauseTimer = 0;
+    cannonLockSweepTimer = 0;
+    multiRequiredDiscountPending = false;
+    comboKillTimestamps = [];
+    if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
+    setDraftUiOpen(false);
+    syncPlayerHud();
+    syncCardInventory();
+  }
+
+  function getPlayerSnapshot() {
+    return {
+      level: playerProgress.level,
+      xp: playerProgress.xp,
+      xpToNext: GameCards.playerXpToNext(playerProgress.level),
+      ownedCards: { ...ownedCards }
+    };
+  }
+
+  function getDraftSnapshot() {
+    return {
+      active: draftState.active,
+      pendingDrafts,
+      options: draftState.options.map((c) => c.id)
+    };
+  }
+
+  function syncPlayerHud() {
+    if (!playerLevelEl || !playerXpFillEl || !playerXpMetaEl) return;
+    const need = GameCards.playerXpToNext(playerProgress.level);
+    const ratio = need > 0 ? Math.min(1, playerProgress.xp / need) : 0;
+    playerLevelEl.textContent = String(playerProgress.level);
+    playerXpFillEl.style.width = (ratio * 100).toFixed(1) + "%";
+    playerXpMetaEl.textContent =
+      playerProgress.xp.toFixed(1) + " / " + need + " XP";
+  }
+
+  function syncCardInventory() {
+    if (!cardInventoryEl) return;
+    cardInventoryEl.innerHTML = "";
+    const ids = Object.keys(ownedCards).filter((id) => ownedCards[id] > 0);
+    ids.sort();
+    for (const id of ids) {
+      const card = GameCards.catalogById[id];
+      if (!card) continue;
+      let chip = document.createElement("span");
+      chip.className = "card-chip";
+      chip.title = card.desc;
+      chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
+      if (id === "freio_emergencia" && runModifiers.emergencyBrakeCharges > 0) {
+        chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "card-chip card-chip--usable";
+        chip.title = card.desc;
+        chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
+        chip.textContent += " [" + runModifiers.emergencyBrakeCharges + "]";
+        chip.addEventListener("click", () => useEmergencyBrake());
+      } else if (id === "laser_fantasma" && runModifiers.ghostLaserCharges > 0) {
+        chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "card-chip card-chip--usable";
+        chip.title = card.desc;
+        chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
+        chip.textContent += " [" + runModifiers.ghostLaserCharges + "]";
+        chip.addEventListener("click", () => useGhostLaser());
+      } else if (id === "limpeza_borda" && runModifiers.borderCleanCharges > 0) {
+        chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "card-chip card-chip--usable";
+        chip.title = card.desc;
+        chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
+        chip.textContent += " [" + runModifiers.borderCleanCharges + "]";
+        chip.addEventListener("click", () => useBorderClean());
+      }
+      cardInventoryEl.appendChild(chip);
+    }
+  }
+
+  function useEmergencyBrake() {
+    if (runModifiers.emergencyBrakeCharges <= 0) return;
+    runModifiers.emergencyBrakeCharges -= 1;
+    descentPauseTimer = Math.max(descentPauseTimer, 8);
+    syncCardInventory();
+  }
+
+  function useGhostLaser() {
+    if (runModifiers.ghostLaserCharges <= 0) return;
+    runModifiers.ghostLaserCharges -= 1;
+    fireGhostLaser();
+    syncCardInventory();
+  }
+
+  function useBorderClean() {
+    if (runModifiers.borderCleanCharges <= 0) return;
+    runModifiers.borderCleanCharges -= 1;
+    cleanLowestActiveRow();
+    syncCardInventory();
+  }
+
+  function renderDraftUI() {
+    if (!levelDraftChoicesEl || !levelDraftTitleEl) return;
+    levelDraftTitleEl.textContent =
+      "Nível " + playerProgress.level + " — escolha uma carta";
+    if (levelDraftSubtitleEl) {
+      levelDraftSubtitleEl.textContent =
+        "Toque em uma das cartas neste painel (centro). O jogo está pausado até você escolher.";
+    }
+    levelDraftChoicesEl.innerHTML = "";
+    for (const card of draftState.options) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "draft-card draft-card--" + (card.rarity || "common");
+      btn.innerHTML =
+        '<span class="draft-card__name">' +
+        card.name +
+        '</span><span class="draft-card__desc">' +
+        card.desc +
+        "</span>";
+      btn.addEventListener("click", () => pickDraftCard(card.id));
+      levelDraftChoicesEl.appendChild(btn);
+    }
+    if (levelDraftRerollEl) {
+      const showReroll = draftState.rerollAvailable && !draftState.rerollUsed;
+      levelDraftRerollEl.hidden = !showReroll;
+    }
+  }
+
+  function setDraftUiOpen(isOpen) {
+    if (stageEl) {
+      stageEl.classList.toggle("draft-open", isOpen);
+    }
+  }
+
+  function openDraft() {
+    if (draftState.active || gameOver || pendingDrafts <= 0) return;
+    draftState.active = true;
+    draftPaused = true;
+    projectiles.length = 0;
+    fireAccumulator = 0;
+    descentAccumulator = 0;
+    draftState.rerollUsed = false;
+    draftState.rerollAvailable = freeDraftReroll;
+    freeDraftReroll = false;
+    draftState.options = GameCards.rollDraftOptions(ownedCards, 3);
+    renderDraftUI();
+    if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = false;
+    setDraftUiOpen(true);
+  }
+
+  function openDraftWithOptions(cardIds) {
+    if (draftState.active || gameOver) return;
+    draftState.active = true;
+    draftPaused = true;
+    projectiles.length = 0;
+    fireAccumulator = 0;
+    descentAccumulator = 0;
+    draftState.options = cardIds
+      .map((id) => GameCards.catalogById[id])
+      .filter(Boolean);
+    renderDraftUI();
+    if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = false;
+    setDraftUiOpen(true);
+  }
+
+  function closeDraftAndResume() {
+    draftState.active = false;
+    draftPaused = false;
+    if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
+    setDraftUiOpen(false);
+    syncCardInventory();
+    if (pendingDrafts > 0 && !gameOver) {
+      requestAnimationFrame(() => {
+        if (pendingDrafts > 0 && !draftState.active && !gameOver) {
+          openDraft();
+        }
+      });
+    }
+  }
+
+  function pickDraftCard(cardId) {
+    if (!draftState.active || gameOver) return;
+    GameCards.applyCardPick(cardId, ownedCards, runModifiers, cardContext);
+    pendingDrafts = Math.max(0, pendingDrafts - 1);
+    fireAccumulator = 0;
+    syncPlayerHud();
+    closeDraftAndResume();
+  }
+
+  function scheduleTryOpenDraft() {
+    if (draftOpenScheduled || gameOver) return;
+    draftOpenScheduled = true;
+    queueMicrotask(() => {
+      draftOpenScheduled = false;
+      tryOpenDraft();
+    });
+  }
+
+  function tryOpenDraft() {
+    if (gameOver || draftState.active) return;
+    if (pendingDrafts <= 0) return;
+    openDraft();
+  }
+
+  function grantPlayerXp(amount) {
+    if (amount <= 0) return;
+    playerProgress.xp += amount;
+    let leveled = false;
+    while (
+      playerProgress.xp >= GameCards.playerXpToNext(playerProgress.level)
+    ) {
+      playerProgress.xp -= GameCards.playerXpToNext(playerProgress.level);
+      playerProgress.level += 1;
+      pendingDrafts += 1;
+      leveled = true;
+    }
+    syncPlayerHud();
+    if (leveled) scheduleTryOpenDraft();
+  }
+
+  if (levelDraftRerollEl) {
+    levelDraftRerollEl.addEventListener("click", () => {
+      if (!draftState.active || draftState.rerollUsed || !draftState.rerollAvailable) {
+        return;
+      }
+      draftState.rerollUsed = true;
+      draftState.options = GameCards.rollDraftOptions(ownedCards, 3);
+      renderDraftUI();
+    });
+  }
+
+  function getKillWeight(sectorIndex) {
+    let w = CONFIG.multi.sectorWeight[sectorIndex] ?? 1;
+    w += runModifiers.sectorWeightBonus[sectorIndex] || 0;
+    w += runModifiers.allSectorBonus || 0;
+    w *= runModifiers.multiWeightMult || 1;
+    return w;
+  }
+
+  function getMultiRequiredForTier(tier) {
+    return Math.round(10 + 5 * tier + tier * tier * 1.25);
+  }
+
+  function consumeMultiRequiredDiscount(required) {
+    if (!multiRequiredDiscountPending) return required;
+    multiRequiredDiscountPending = false;
+    return Math.round(required * multiRequiredDiscountFactor);
+  }
+
+  function findNearestActiveCellWorld(px, py, maxDist) {
+    let best = null;
+    let bestD = maxDist * maxDist;
+    for (const cell of cellLookup.values()) {
+      if (!cell.active) continue;
+      const wx = cell.cx;
+      const wy = cell.cy + shapeOffsetY;
+      const d = (wx - px) ** 2 + (wy - py) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = cell;
+      }
+    }
+    return best;
+  }
+
+  function killCellAtWorld(cell, patchPx, patchPy, radius, killsOut) {
+    if (!cell || !cell.active) return;
+    cell.active = false;
+    cellLookup.delete(cell.gridKey);
+    killsOut.push({
+      cx: cell.cx,
+      cy: cell.cy,
+      sectorIndex: cell.sectorIndex
+    });
+    patchCellsCanvasAfterHit(patchPx, patchPy, radius);
+  }
+
+  function explodeAtWorld(wx, wy, radius, killsOut) {
+    const { inset, size } = getCellHitRect();
+    const localPy = wy - shapeOffsetY;
+    const pitch = CONFIG.pixelSize;
+    const gx0 = Math.floor((wx - radius - gridMinX) / pitch);
+    const gx1 = Math.floor((wx + radius - gridMinX) / pitch);
+    const gy0 = Math.floor((localPy - radius - gridMinY) / pitch);
+    const gy1 = Math.floor((localPy + radius - gridMinY) / pitch);
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const cell = cellLookup.get(cellGridKey(gx, gy));
+        if (!cell || !cell.active) continue;
+        const left = cell.x + inset;
+        const top = cell.y + inset + shapeOffsetY;
+        if (circleIntersectsRect(wx, wy, radius, left, top, size, size)) {
+          killCellAtWorld(cell, wx, wy, radius, killsOut);
+        }
+      }
+    }
+  }
+
+  function chainFromCell(cell, killsOut) {
+    const pitch = CONFIG.pixelSize;
+    const parts = cell.gridKey.split(",");
+    const gx = parseInt(parts[0], 10);
+    const gy = parseInt(parts[1], 10);
+    const neighbors = [
+      [gx + 1, gy],
+      [gx - 1, gy],
+      [gx, gy + 1],
+      [gx, gy - 1]
+    ];
+    for (const [nx, ny] of neighbors) {
+      const n = cellLookup.get(cellGridKey(nx, ny));
+      if (n && n.active && Math.random() < 0.3) {
+        killCellAtWorld(n, n.cx, n.cy + shapeOffsetY, CONFIG.cannon.projectileRadius, killsOut);
+        break;
+      }
+    }
+  }
+
+  function cleanLowestActiveRow() {
+    let maxBottom = -Infinity;
+    const { inset, size } = getCellHitRect();
+    const rowCells = [];
+    for (const cell of cellLookup.values()) {
+      if (!cell.active) continue;
+      const bottom = cell.y + inset + size + shapeOffsetY;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    if (maxBottom === -Infinity) return;
+    const kills = [];
+    for (const cell of cellLookup.values()) {
+      if (!cell.active) continue;
+      const bottom = cell.y + inset + size + shapeOffsetY;
+      if (Math.abs(bottom - maxBottom) < 0.5) {
+        killCellAtWorld(
+          cell,
+          cell.cx,
+          cell.cy + shapeOffsetY,
+          CONFIG.cannon.projectileRadius,
+          kills
+        );
+      }
+    }
+    if (kills.length) processKillRewards(kills, false);
+  }
+
+  function fireGhostLaser() {
+    const dir = getCannonAimDirection(sweepPhi);
+    const cannon = CONFIG.cannon;
+    const muzzleOffset = cannon.barrelLength - 4;
+    let x = cannon.pivotX + dir.x * muzzleOffset;
+    let y = cannon.pivotY + dir.y * muzzleOffset;
+    const step = CONFIG.pixelSize * 0.5;
+    const kills = [];
+    for (let i = 0; i < 800; i++) {
+      x += dir.x * step;
+      y += dir.y * step;
+      if (x < 0 || x > CONFIG.virtualWidth || y < 0 || y > CONFIG.virtualHeight) break;
+      const result = killCellsHitByProjectile(x, y, cannon.projectileRadius);
+      if (result.kills.length) {
+        kills.push(...result.kills);
+      }
+    }
+    if (kills.length) processKillRewards(kills, false);
+  }
+
+  function spawnProjectileFromCannon(phiOffset) {
+    if (gameOver || draftPaused) return;
+    const cannon = CONFIG.cannon;
+    const phi = sweepPhi + phiOffset;
+    const dir = getCannonAimDirection(phi);
+    const muzzleOffset = cannon.barrelLength - 4;
+    const hitRadius = cannon.projectileRadius + runModifiers.hitRadiusBonus;
+    let pierce =
+      getPierceForMultiTier(multiState.tier) + runModifiers.pierceBonus;
+    pierce = Math.min(CONFIG.multi.maxPierceHits, pierce);
+    projectiles.push({
+      x: cannon.pivotX + dir.x * muzzleOffset,
+      y: cannon.pivotY + dir.y * muzzleOffset,
+      vx: dir.x * cannon.projectileSpeed,
+      vy: dir.y * cannon.projectileSpeed,
+      pierceLeft: pierce,
+      powerTier: multiState.tier,
+      hitRadius,
+      homing: runModifiers.homingStrength
+    });
+  }
+
+  function processKillRewards(kills, allowCardExtras) {
+    if (!kills.length) return;
+    const extras = [];
+    if (allowCardExtras) {
+      for (const kill of kills) {
+        if (runModifiers.blueExplosion && kill.sectorIndex === 4) {
+          explodeAtWorld(
+            kill.cx,
+            kill.cy + shapeOffsetY,
+            8,
+            extras
+          );
+        }
+        if (runModifiers.purpleChain && kill.sectorIndex === 3) {
+          const cell = cells.find(
+            (c) => c.cx === kill.cx && c.cy === kill.cy
+          );
+          if (cell) chainFromCell(cell, extras);
+        }
+      }
+    }
+
+    const allKills = kills.concat(extras);
+    let gained = 0;
+    const now = performance.now();
+    comboKillTimestamps = comboKillTimestamps.filter((t) => now - t < 1000);
+    for (const kill of allKills) {
+      const weight = getKillWeight(kill.sectorIndex);
+      gained += weight;
+      multiState.lastSectorIndex = kill.sectorIndex;
+      spawnFloatingWeight(kill.cx, kill.cy + shapeOffsetY, weight, kill.sectorIndex);
+      spawnImpactRing(kill.cx, kill.cy + shapeOffsetY, kill.sectorIndex);
+      comboKillTimestamps.push(now);
+    }
+
+    if (runModifiers.comboSafe && comboKillTimestamps.length >= 3) {
+      multiState.meter += 2;
+      comboKillTimestamps = [];
+    }
+
+    multiState.meter += gained;
+    multiState.lifetimeWeighted += gained;
+    pulseMultiHud();
+    grantPlayerXp(gained);
+
+    let tierUps = 0;
+    let req = consumeMultiRequiredDiscount(
+      getMultiRequiredForTier(multiState.tier)
+    );
+    while (multiState.meter >= req) {
+      multiState.meter -= req;
+      multiState.tier += 1;
+      tierUps += 1;
+      req = getMultiRequiredForTier(multiState.tier);
+    }
+    if (tierUps > 0) celebrateMultiTierUp();
+    syncMultiHud();
+  }
 
   const multiState = {
     tier: 0,
@@ -69,9 +590,18 @@
   const hudRootEl = document.getElementById("multiHud");
   const cannonDebugAngleEl = document.getElementById("cannonDebugAngle");
   const cannonDebugMetaEl = document.getElementById("cannonDebugMeta");
+  const gameOverOverlayEl = document.getElementById("gameOverOverlay");
+  const gameOverRestartEl = document.getElementById("gameOverRestart");
+
+  let shapeBounds = { minY: 0, maxY: 0 };
+  let shapeOffsetY = 0;
+  let descentAccumulator = 0;
+  let rowsDropped = 0;
+  let gameOver = false;
+  let gameOverReason = "";
 
   function multiRequiredDelta(tier) {
-    return Math.round(10 + 5 * tier + tier * tier * 1.25);
+    return getMultiRequiredForTier(tier);
   }
 
   function getPierceForMultiTier(tier) {
@@ -101,7 +631,7 @@
   function syncMultiHud() {
     if (!hudTierEl || !hudFillEl || !hudMetaEl) return;
 
-    const required = multiRequiredDelta(multiState.tier);
+    const required = getMultiRequiredForTier(multiState.tier);
     const ratio = required > 0 ? Math.min(1, multiState.meter / required) : 0;
     const sector = CONFIG.sectors[multiState.lastSectorIndex] || CONFIG.sectors[0];
 
@@ -157,33 +687,7 @@
   }
 
   function registerMultiKills(kills) {
-    if (!kills.length) return;
-
-    let gained = 0;
-    for (const kill of kills) {
-      const weight = CONFIG.multi.sectorWeight[kill.sectorIndex] ?? 1;
-      gained += weight;
-      multiState.lastSectorIndex = kill.sectorIndex;
-      spawnFloatingWeight(kill.cx, kill.cy, weight, kill.sectorIndex);
-      spawnImpactRing(kill.cx, kill.cy, kill.sectorIndex);
-    }
-
-    multiState.meter += gained;
-    multiState.lifetimeWeighted += gained;
-    pulseMultiHud();
-
-    let tierUps = 0;
-    while (multiState.meter >= multiRequiredDelta(multiState.tier)) {
-      multiState.meter -= multiRequiredDelta(multiState.tier);
-      multiState.tier += 1;
-      tierUps += 1;
-    }
-
-    if (tierUps > 0) {
-      celebrateMultiTierUp();
-    }
-
-    syncMultiHud();
+    processKillRewards(kills, true);
   }
 
   function updateEffects(dt) {
@@ -295,6 +799,7 @@
     },
 
     update(dt) {
+      updateDescent(dt);
       updateCannon(dt);
       updateEffects(dt);
     },
@@ -307,6 +812,155 @@
       renderFrame();
     }
   };
+
+  function computeShapeBounds() {
+    if (!cells.length) {
+      shapeBounds = { minY: 0, maxY: 0 };
+      return;
+    }
+
+    const { inset, size } = getCellHitRect();
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const cell of cells) {
+      const top = cell.y + inset;
+      const bottom = top + size;
+      minY = Math.min(minY, top);
+      maxY = Math.max(maxY, bottom);
+    }
+
+    shapeBounds = { minY, maxY };
+  }
+
+  function resetDescentPosition() {
+    computeShapeBounds();
+    shapeOffsetY =
+      -shapeBounds.maxY -
+      CONFIG.descent.startGapAbove -
+      runModifiers.startRowsBonus * CONFIG.pixelSize;
+    descentAccumulator = 0;
+    rowsDropped = 0;
+    lastRowsDroppedForTick = 0;
+  }
+
+  function getDescentSnapshot() {
+    return {
+      shapeOffsetY,
+      gameOver,
+      gameOverReason,
+      rowsDropped,
+      loseLineY: getLoseLineY(),
+      shapeBounds: { ...shapeBounds }
+    };
+  }
+
+  function setGameOver(reason) {
+    if (gameOver) return;
+    if (runModifiers.secondChance && !runModifiers.secondChanceUsed) {
+      runModifiers.secondChanceUsed = true;
+      shapeOffsetY -= CONFIG.pixelSize * 4;
+      syncCardInventory();
+      return;
+    }
+    gameOver = true;
+    gameOverReason = reason;
+    pendingDrafts = 0;
+    draftState.active = false;
+    draftPaused = false;
+    if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
+    setDraftUiOpen(false);
+    if (gameOverOverlayEl) {
+      gameOverOverlayEl.hidden = false;
+    }
+  }
+
+  function checkDescentGameOver() {
+    const { inset, size } = getCellHitRect();
+    const loseLineY = getLoseLineY();
+
+    for (const cell of cellLookup.values()) {
+      if (!cell.active) continue;
+      const bottomY = cell.y + inset + size + shapeOffsetY;
+      if (bottomY >= loseLineY) {
+        setGameOver("O semi-donut encostou na base do canhão.");
+        return;
+      }
+    }
+  }
+
+  function updateDescent(dt) {
+    if (gameOver || draftPaused) return;
+    const stepSeconds = Math.max(
+      0.05,
+      (CONFIG.descent.intervalMs / 1000) *
+        Math.max(0.05, runModifiers.descentIntervalMult || 1)
+    );
+
+    if (descentPauseTimer > 0) {
+      descentPauseTimer = Math.max(0, descentPauseTimer - dt);
+      return;
+    }
+
+    descentAccumulator += dt;
+
+    let descentSteps = 8;
+    while (descentAccumulator >= stepSeconds && descentSteps > 0) {
+      descentAccumulator -= stepSeconds;
+      descentSteps -= 1;
+      shapeOffsetY += CONFIG.pixelSize;
+      rowsDropped += 1;
+
+      if (
+        runModifiers.tickExtraEnabled &&
+        rowsDropped > 0 &&
+        rowsDropped % 10 === 0 &&
+        rowsDropped !== lastRowsDroppedForTick
+      ) {
+        lastRowsDroppedForTick = rowsDropped;
+        descentPauseTimer = Math.max(descentPauseTimer, 3);
+      }
+
+      checkDescentGameOver();
+      if (gameOver) break;
+    }
+  }
+
+  function drawDangerLine() {
+    const y = getLoseLineY();
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 80, 110, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(CONFIG.virtualWidth, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function restartGame() {
+    gameOver = false;
+    gameOverReason = "";
+    projectiles.length = 0;
+    floatingTexts.length = 0;
+    impactRings.length = 0;
+    tierFlash = 0;
+    fireAccumulator = 0;
+    resetMulti();
+    resetPlayerRun();
+    buildCells();
+    resetDescentPosition();
+    Game.markStaticDirty();
+    if (gameOverOverlayEl) {
+      gameOverOverlayEl.hidden = true;
+    }
+  }
+
+  if (gameOverRestartEl) {
+    gameOverRestartEl.addEventListener("click", restartGame);
+  }
 
   function cellGridKey(gx, gy) {
     return gx + "," + gy;
@@ -346,10 +1000,11 @@
   function killCellsHitByProjectile(px, py, radius) {
     const { inset, size } = getCellHitRect();
     const pitch = CONFIG.pixelSize;
+    const localPy = py - shapeOffsetY;
     const gx0 = Math.floor((px - radius - gridMinX) / pitch);
     const gx1 = Math.floor((px + radius - gridMinX) / pitch);
-    const gy0 = Math.floor((py - radius - gridMinY) / pitch);
-    const gy1 = Math.floor((py + radius - gridMinY) / pitch);
+    const gy0 = Math.floor((localPy - radius - gridMinY) / pitch);
+    const gy1 = Math.floor((localPy + radius - gridMinY) / pitch);
     const kills = [];
 
     for (let gy = gy0; gy <= gy1; gy++) {
@@ -358,7 +1013,7 @@
         if (!cell || !cell.active) continue;
 
         const left = cell.x + inset;
-        const top = cell.y + inset;
+        const top = cell.y + inset + shapeOffsetY;
         if (!circleIntersectsRect(px, py, radius, left, top, size, size)) {
           continue;
         }
@@ -382,10 +1037,12 @@
   }
 
   function patchCellsCanvasAfterHit(px, py, radius) {
+    const localPx = px;
+    const localPy = py - shapeOffsetY;
     const { inset, size } = getCellHitRect();
     const glowPad = CONFIG.glow ? CELL_GLOW_ERASE_PAD : 0;
-    const left = px - radius - glowPad;
-    const top = py - radius - glowPad;
+    const left = localPx - radius - glowPad;
+    const top = localPy - radius - glowPad;
     const width = radius * 2 + glowPad * 2;
     const height = radius * 2 + glowPad * 2;
 
@@ -398,6 +1055,7 @@
   }
 
   function moveProjectile(p, dt) {
+    if (!p) return { removed: true };
     const cannon = CONFIG.cannon;
     const hitRadius = p.hitRadius ?? cannon.projectileRadius;
     const speed = Math.hypot(p.vx, p.vy);
@@ -414,6 +1072,10 @@
 
       registerMultiKills(result.kills);
 
+      if (result.kills.some((k) => k.sectorIndex === 2)) {
+        p.pierceLeft += runModifiers.redPierceBonus;
+      }
+
       if (p.pierceLeft > 1) {
         p.pierceLeft -= 1;
         continue;
@@ -423,6 +1085,23 @@
     }
 
     return { removed: false };
+  }
+
+  function steerProjectileHoming(p, dt) {
+    if (!p || !p.homing || p.homing <= 0) return;
+    const target = findNearestActiveCellWorld(p.x, p.y, 220);
+    if (!target) return;
+    const tx = target.cx;
+    const ty = target.cy + shapeOffsetY;
+    let dx = tx - p.x;
+    let dy = ty - p.y;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    const speed = Math.hypot(p.vx, p.vy) || 1;
+    const blend = Math.min(1, p.homing * dt * 3);
+    p.vx = p.vx * (1 - blend) + dx * speed * blend;
+    p.vy = p.vy * (1 - blend) + dy * speed * blend;
   }
 
   function syncCannonDebugHud() {
@@ -446,37 +1125,56 @@
   }
 
   function updateCannon(dt) {
-    const cannon = CONFIG.cannon;
-    const sweepSpeed = Math.PI / cannon.sweepSecondsOneWay;
+    if (draftPaused) return;
 
-    sweepPhi += sweepDir * sweepSpeed * dt;
-    if (sweepPhi >= Math.PI) {
-      sweepPhi = Math.PI;
-      sweepDir = -1;
-    } else if (sweepPhi <= 0) {
-      sweepPhi = 0;
-      sweepDir = 1;
+    const cannon = CONFIG.cannon;
+
+    if (cannonLockSweepTimer > 0) {
+      cannonLockSweepTimer = Math.max(0, cannonLockSweepTimer - dt);
+    } else {
+      const sweepSpeed =
+        (Math.PI / cannon.sweepSecondsOneWay) * runModifiers.sweepSpeedMult;
+      sweepPhi += sweepDir * sweepSpeed * dt;
+      if (sweepPhi >= Math.PI) {
+        sweepPhi = Math.PI;
+        sweepDir = -1;
+      } else if (sweepPhi <= 0) {
+        sweepPhi = 0;
+        sweepDir = 1;
+      }
     }
 
-    fireAccumulator += dt;
-    while (fireAccumulator >= cannon.fireIntervalMs / 1000) {
-      fireAccumulator -= cannon.fireIntervalMs / 1000;
-      const dir = getCannonAimDirection(sweepPhi);
-      const muzzleOffset = cannon.barrelLength - 4;
-      projectiles.push({
-        x: cannon.pivotX + dir.x * muzzleOffset,
-        y: cannon.pivotY + dir.y * muzzleOffset,
-        vx: dir.x * cannon.projectileSpeed,
-        vy: dir.y * cannon.projectileSpeed,
-        pierceLeft: getPierceForMultiTier(multiState.tier),
-        powerTier: multiState.tier,
-        hitRadius: cannon.projectileRadius
-      });
+    if (!gameOver) {
+      const mult = Math.max(0.28, runModifiers.fireIntervalMult || 1);
+      const fireInterval = Math.max(
+        0.05,
+        (cannon.fireIntervalMs / 1000) * mult
+      );
+      fireAccumulator += dt;
+      let shotsBudget = 16;
+      while (fireAccumulator >= fireInterval && shotsBudget > 0) {
+        fireAccumulator -= fireInterval;
+        shotsBudget -= 1;
+        const stacks = GameCards.getStacks(ownedCards, "varredura_dupla");
+        const shots = runModifiers.doubleShot ? 1 + Math.min(2, stacks) : 1;
+        const offsets = [0, -0.05, 0.05];
+        for (let i = 0; i < shots; i++) {
+          spawnProjectileFromCannon(offsets[i] || 0);
+        }
+      }
+      if (fireAccumulator > fireInterval * 2) {
+        fireAccumulator = fireInterval;
+      }
     }
 
     const margin = 80;
     for (let i = projectiles.length - 1; i >= 0; i--) {
       const p = projectiles[i];
+      if (!p) {
+        projectiles.splice(i, 1);
+        continue;
+      }
+      steerProjectileHoming(p, dt);
       const result = moveProjectile(p, dt);
 
       if (result.removed) {
@@ -533,6 +1231,7 @@
     const cannon = CONFIG.cannon;
 
     for (const p of projectiles) {
+      if (!p) continue;
       const colors = projectileColorsForTier(p.powerTier ?? 0);
       const trail = colors.trail;
 
@@ -796,8 +1495,9 @@
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
     ctx.drawImage(staticBgCanvas, 0, 0);
-    ctx.drawImage(staticCellsCanvas, 0, 0);
+    ctx.drawImage(staticCellsCanvas, 0, shapeOffsetY);
 
+    drawDangerLine();
     drawEffects();
     drawProjectiles();
     drawCannon();
@@ -848,8 +1548,13 @@
     getProjectiles: () => projectiles,
     getMulti: getMultiSnapshot,
     resetMulti,
+    getDescent: getDescentSnapshot,
+    getPlayer: getPlayerSnapshot,
+    getDraft: getDraftSnapshot,
+    restart: restartGame,
     rebuild: () => {
       buildCells();
+      resetDescentPosition();
       Game.markStaticDirty();
     },
     redraw: draw,
@@ -873,9 +1578,48 @@
     stop: stopGameLoop
   };
 
+  if (new URLSearchParams(window.location.search).has("test")) {
+    window.SemiDonutPrototype.__test = {
+      grantXp(amount) {
+        grantPlayerXp(amount);
+      },
+      openDraft(cardIds) {
+        pendingDrafts = Math.max(pendingDrafts, 1);
+        openDraftWithOptions(cardIds);
+      },
+      pick(cardId) {
+        pickDraftCard(cardId);
+      },
+      internal() {
+        return {
+          draftPaused,
+          pendingDrafts,
+          draftActive: draftState.active,
+          overlayHidden: levelDraftOverlayEl ? levelDraftOverlayEl.hidden : null,
+          fireIntervalMult: runModifiers.fireIntervalMult,
+          gameOver,
+          projectileCount: projectiles.length
+        };
+      },
+      benchUpdates(frames, dt = 1 / 60) {
+        const t0 = performance.now();
+        for (let i = 0; i < frames; i++) {
+          Game.update(dt);
+        }
+        return performance.now() - t0;
+      }
+    };
+  }
+
   buildCells();
+  resetPlayerRun();
+  resetDescentPosition();
   syncMultiHud();
+  syncPlayerHud();
   Game.markStaticDirty();
+  if (gameOverOverlayEl) {
+    gameOverOverlayEl.hidden = true;
+  }
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
   startGameLoop();
