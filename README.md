@@ -55,6 +55,11 @@ SemiDonutPrototype.rebuild()
 - **Loja de Bolso** concede **1 reroll** no próximo draft.
 - Inventário (canto superior esquerdo): clique em **Freio / Laser / Limpeza** para usar cargas.
 
+## Limpar o arco (onda)
+
+- Destruir **todos** os pixels pausa a run (~6 s de descida), dá **+15 fragmentos** (sessão), bônus de **XP/Multi** e o texto **Arco destruído**.
+- Após **3 s**, abre um **draft** (escolha de carta); ao fechar, entra um **novo semi-donut** (**Onda 2+**) com descida um pouco mais rápida a cada onda.
+
 ## Multi (resumo)
 
 - Progresso por **peso**, não por contagem fixa: amarelo +1.0, laranja +1.2, vermelho +1.45, roxo +1.75, azul +2.1.

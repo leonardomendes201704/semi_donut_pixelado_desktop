@@ -91,6 +91,10 @@
   let runDraftCount = 0;
   let runFirstDraftRerollPending = false;
   let blessingState = { active: false, options: [] };
+  let runWave = 1;
+  let waveDescentMult = 1;
+  let arcClearBusy = false;
+  let arcClearDelayTimer = 0;
 
   const playerLevelEl = document.getElementById("playerLevel");
   const playerXpFillEl = document.getElementById("playerXpFill");
@@ -144,6 +148,10 @@
     cannonLockSweepTimer = 0;
     multiRequiredDiscountPending = false;
     comboKillTimestamps = [];
+    runWave = 1;
+    waveDescentMult = 1;
+    arcClearBusy = false;
+    arcClearDelayTimer = 0;
     if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
     setDraftUiOpen(false);
     syncPlayerHud();
@@ -310,7 +318,8 @@
       level: playerProgress.level,
       xp: playerProgress.xp,
       xpToNext: GameCards.playerXpToNext(playerProgress.level),
-      ownedCards: { ...ownedCards }
+      ownedCards: { ...ownedCards },
+      runWave
     };
   }
 
@@ -528,10 +537,16 @@
 
   function closeDraftAndResume() {
     draftState.active = false;
-    draftPaused = false;
+    if (!arcClearBusy) {
+      draftPaused = false;
+    }
     if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
     setDraftUiOpen(false);
     syncCardInventory();
+    if (arcClearBusy && pendingDrafts <= 0) {
+      finishArcClearWave();
+      return;
+    }
     if (pendingDrafts > 0 && !gameOver) {
       requestAnimationFrame(() => {
         if (pendingDrafts > 0 && !draftState.active && !gameOver) {
@@ -561,6 +576,7 @@
 
   function tryOpenDraft() {
     if (gameOver || draftState.active) return;
+    if (arcClearBusy && arcClearDelayTimer > 0) return;
     if (pendingDrafts <= 0) return;
     openDraft();
   }
@@ -811,6 +827,81 @@
     }
     if (tierUps > 0) celebrateMultiTierUp();
     syncMultiHud();
+    tryTriggerArcClear();
+  }
+
+  function hasAnyActiveCell() {
+    for (let i = 0; i < cells.length; i++) {
+      if (cells[i].active) return true;
+    }
+    return false;
+  }
+
+  function spawnArcClearFloater(text) {
+    floatingTexts.push({
+      x: CONFIG.centerX,
+      y: CONFIG.centerY - 120,
+      text,
+      color: "#ffd98a",
+      life: 2.4,
+      maxLife: 2.4,
+      vy: -32
+    });
+  }
+
+  function beginArcClearSequence() {
+    arcClearBusy = true;
+    draftPaused = true;
+    projectiles.length = 0;
+    fireAccumulator = 0;
+
+    const fragmentBonus = 15;
+    sessionMeta.fragments += fragmentBonus;
+    syncSessionHud();
+
+    grantPlayerXp(GameCards.scalePlayerXp(25 + runWave * 8));
+    multiState.meter += 5 + runWave * 2;
+    pulseMultiHud();
+    syncMultiHud();
+
+    tierFlash = 1.4;
+    descentPauseTimer = Math.max(descentPauseTimer, 6);
+    spawnArcClearFloater(
+      "Arco destruído! +" + fragmentBonus + " fragmentos"
+    );
+
+    arcClearDelayTimer = 3;
+  }
+
+  function tryTriggerArcClear() {
+    if (arcClearBusy || gameOver || blessingState.active) return;
+    if (draftState.active) return;
+    if (hasAnyActiveCell()) return;
+    beginArcClearSequence();
+  }
+
+  function finishArcClearWave() {
+    runWave += 1;
+    waveDescentMult = Math.max(0.68, waveDescentMult * 0.97);
+    buildCells();
+    resetDescentPosition();
+    shapeRotationRad = 0;
+    shapeRotationDir = 1;
+    Game.markStaticDirty();
+    arcClearBusy = false;
+    arcClearDelayTimer = 0;
+    draftPaused = false;
+    spawnArcClearFloater("Onda " + runWave);
+  }
+
+  function updateArcClearTimer(dt) {
+    if (!arcClearBusy || arcClearDelayTimer <= 0) return;
+    if (draftState.active || gameOver) return;
+    arcClearDelayTimer -= dt;
+    if (arcClearDelayTimer <= 0) {
+      pendingDrafts += 1;
+      tryOpenDraft();
+    }
   }
 
   const multiState = {
@@ -1050,6 +1141,7 @@
     },
 
     update(dt) {
+      updateArcClearTimer(dt);
       updateShapeRotation(dt);
       updateDescent(dt);
       updateCannon(dt);
@@ -1195,6 +1287,8 @@
     if (gameOver) return;
     gameOver = true;
     gameOverReason = reason;
+    arcClearBusy = false;
+    arcClearDelayTimer = 0;
     pendingDrafts = 0;
     draftState.active = false;
     draftPaused = false;
@@ -1226,7 +1320,8 @@
       0.05,
       (CONFIG.descent.intervalMs / 1000) *
         Math.max(0.05, runModifiers.descentIntervalMult || 1) *
-        Math.max(0.05, sessionDescentMult)
+        Math.max(0.05, sessionDescentMult) *
+        Math.max(0.05, waveDescentMult)
     );
 
     if (descentPauseTimer > 0) {
@@ -1283,6 +1378,10 @@
     shapeRotationRad = 0;
     shapeRotationDir = 1;
     runDraftCount = 0;
+    runWave = 1;
+    waveDescentMult = 1;
+    arcClearBusy = false;
+    arcClearDelayTimer = 0;
     blessingState.active = false;
     if (sessionBlessingOverlayEl) sessionBlessingOverlayEl.hidden = true;
     resetMulti();
