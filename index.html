@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Semi Donut Pixelado — Protótipo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="stage">
+    <div id="multiHud" class="multi-hud" aria-live="polite">
+      <div class="multi-hud__top">
+        <span class="multi-hud__label">MULTI</span>
+        <span id="multiTier" class="multi-hud__tier">×1</span>
+      </div>
+      <div class="multi-hud__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div id="multiFill" class="multi-hud__fill"></div>
+      </div>
+      <div id="multiMeta" class="multi-hud__meta">0 / 10 → ×2</div>
+    </div>
+    <canvas id="gameCanvas" aria-label="Semi donut pixelado dividido em cinco setores"></canvas>
+    <div id="cannonDebug" class="cannon-debug">
+      <div class="cannon-debug__label">Canhão (debug)</div>
+      <div id="cannonDebugAngle" class="cannon-debug__angle">0.0°</div>
+      <div id="cannonDebugMeta" class="cannon-debug__meta">φ 0.00 rad · varredura →</div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
