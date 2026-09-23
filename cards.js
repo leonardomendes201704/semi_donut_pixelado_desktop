@@ -20,7 +20,7 @@
 
   const CARD_CATALOG = [
     { id: "cadencia_frenetica", name: "Cadência Frenética", rarity: "common", maxStacks: 5, desc: "Disparos −20% intervalo.", apply(m) { m.fireIntervalMult = Math.max(0.28, m.fireIntervalMult * 0.8); } },
-    { id: "mira_lenta", name: "Mira Lenta", rarity: "common", maxStacks: 4, desc: "Varredura 25% mais lenta.", apply(m) { m.sweepSpeedMult *= 0.75; } },
+    { id: "mira_lenta", name: "Mira Lenta", rarity: "common", maxStacks: 4, desc: "Canhão segue o mouse 25% mais devagar.", apply(m) { m.sweepSpeedMult *= 0.75; } },
     { id: "varredura_dupla", name: "Varredura Dupla", rarity: "uncommon", maxStacks: 3, desc: "Cada tiro dispara 2 projéteis.", apply(m) { m.doubleShot = true; } },
     { id: "perfurador_mk2", name: "Perfurador MK2", rarity: "common", maxStacks: 5, desc: "+1 perfuração nos tiros.", apply(m) { m.pierceBonus += 1; } },
     { id: "nucleo_denso", name: "Núcleo Denso", rarity: "common", maxStacks: 3, desc: "Colisão +1px (visual igual).", apply(m) { m.hitRadiusBonus += 1; } },
@@ -37,7 +37,6 @@
     { id: "escada_curta", name: "Escada Curta", rarity: "uncommon", maxStacks: 3, desc: "Próxima meta Multi −15%.", apply(m, ctx) { ctx.applyNextMultiDiscount(0.85); } },
     { id: "gravidade_leve", name: "Gravidade Leve", rarity: "common", maxStacks: 4, desc: "Descida 25% mais lenta.", apply(m) { m.descentIntervalMult *= 1.25; } },
     { id: "freio_emergencia", name: "Freio de Emergência", rarity: "rare", maxStacks: 2, desc: "+1 carga: pausa descida 8s (clique no inventário).", apply(m) { m.emergencyBrakeCharges += 1; } },
-    { id: "linha_recuada", name: "Linha Recuada", rarity: "uncommon", maxStacks: 3, desc: "Linha de game over sobe 30px.", apply(m) { m.loseLineOffsetY -= 30; } },
     { id: "tick_extra", name: "Tick Extra", rarity: "uncommon", maxStacks: 3, desc: "A cada 10 linhas: +3s sem descer.", apply(m) { m.tickExtraEnabled = true; } },
     { id: "explosao_setorial", name: "Explosão Setorial", rarity: "uncommon", maxStacks: 3, desc: "Azul: explosão 8px.", apply(m) { m.blueExplosion = true; } },
     { id: "corrente_eletrica", name: "Corrente Elétrica", rarity: "uncommon", maxStacks: 3, desc: "Roxo: 30% de chain.", apply(m) { m.purpleChain = true; } },
@@ -65,7 +64,6 @@
       comboSafe: false,
       descentIntervalMult: 1,
       emergencyBrakeCharges: 0,
-      loseLineOffsetY: 0,
       tickExtraEnabled: false,
       blueExplosion: false,
       purpleChain: false,

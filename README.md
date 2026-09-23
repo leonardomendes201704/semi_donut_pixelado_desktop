@@ -12,17 +12,17 @@ Protótipo inicial em HTML + CSS + JavaScript puro.
 
 - Semi donut / arco superior com pixels destrutíveis.
 - 5 setores independentes (amarelo → azul).
-- Canhão na base com varredura em semicírculo e projéteis automáticos.
+- Canhão na base **mirando o cursor** (semicírculo superior) com projéteis automáticos.
 - **Sistema Multi**: medidor com metas escalonadas; cada cor de setor soma um peso diferente ao progresso.
 - A cada subida de tier, novos tiros **perfuram** mais quadradinhos (mesmo tamanho visual do projétil).
 - HUD Multi, textos flutuantes `+peso`, anéis de impacto e flash ao subir tier.
-- **Descida Tetris**: o semi-donut entra de cima e desce **1 linha (6px) a cada 500ms**; se encostar na base do canhão (`y = 865`), **game over**.
+- **Descida Tetris**: o semi-donut entra de cima e desce **1 linha (6px) a cada 1000ms**; se encostar na base do canhão (`y = 865`), **game over**.
 
 ## Estrutura
 
 - `index.html` — página principal + HUD Multi.
 - `styles.css` — tela, fundo e HUD.
-- `cards.js` — catálogo das 28 cartas.
+- `cards.js` — catálogo das 27 cartas.
 - `app.js` — jogo, colisão, Multi, draft e render.
 
 ## API global
@@ -48,7 +48,7 @@ SemiDonutPrototype.rebuild()
 
 - XP sobe com **~14%** do peso das eliminações (Multi continua com 100%); metas por nível são bem maiores que no início do protótipo.
 - Cada **nível** abre draft: **3 cartas**, escolha **1**; jogo pausa e projéteis somem.
-- A partir do **nível 5**, o semi-donut **oscila ±45°** em torno do centro do arco (colisão e game over acompanham a rotação).
+- A partir do **nível 2**, o semi-donut **oscila ±45°** (≈32s por perna); a velocidade sobe **+1×** a cada nível acima do 2.
 - **Loja de Bolso** concede **1 reroll** no próximo draft.
 - Inventário (canto superior esquerdo): clique em **Freio / Laser / Limpeza** para usar cargas.
 

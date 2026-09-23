@@ -52,19 +52,20 @@
     },
 
     descent: {
-      intervalMs: 500,
+      intervalMs: 1000,
       startGapAbove: 24
     },
 
     shapeRotation: {
-      minLevel: 5,
+      minLevel: 2,
       limitRad: Math.PI / 4,
-      halfCycleSeconds: 3.2
+      halfCycleSeconds: 32,
+      speedPerLevel: 1
     }
   };
 
   function getLoseLineY() {
-    return CONFIG.cannon.pivotY + runModifiers.loseLineOffsetY;
+    return CONFIG.cannon.pivotY;
   }
 
   let draftPaused = false;
@@ -782,8 +783,10 @@
   let cellLookup = new Map();
   let gridMinX = 0;
   let gridMinY = 0;
-  let sweepPhi = 0;
-  let sweepDir = 1;
+  let sweepPhi = Math.PI / 2;
+  let pointerVirtualX = CONFIG.cannon.pivotX;
+  let pointerVirtualY = CONFIG.cannon.pivotY - 320;
+  let pointerOnCanvas = false;
   let fireAccumulator = 0;
   let lastFrameTime = 0;
   let rafId = 0;
@@ -909,8 +912,14 @@
     }
 
     const limit = CONFIG.shapeRotation.limitRad;
-    const speed =
+    const baseSpeed =
       (limit * 2) / Math.max(0.5, CONFIG.shapeRotation.halfCycleSeconds);
+    const levelsAbove = Math.max(
+      0,
+      playerProgress.level - CONFIG.shapeRotation.minLevel
+    );
+    const perLevel = CONFIG.shapeRotation.speedPerLevel ?? 1;
+    const speed = baseSpeed * (1 + levelsAbove * perLevel);
 
     shapeRotationRad += shapeRotationDir * speed * dt;
     if (shapeRotationRad >= limit) {
@@ -1189,17 +1198,65 @@
     p.vy = p.vy * (1 - blend) + dy * speed * blend;
   }
 
+  function clientToVirtual(clientX, clientY) {
+    const cssW = window.innerWidth;
+    const cssH = window.innerHeight;
+    const scale = Math.min(
+      cssW / CONFIG.virtualWidth,
+      cssH / CONFIG.virtualHeight
+    );
+    const offsetX = (cssW - CONFIG.virtualWidth * scale) / 2;
+    const offsetY = (cssH - CONFIG.virtualHeight * scale) / 2;
+    return {
+      x: (clientX - offsetX) / scale,
+      y: (clientY - offsetY) / scale
+    };
+  }
+
+  function targetPhiFromVirtualPoint(vx, vy) {
+    const cannon = CONFIG.cannon;
+    const dx = vx - cannon.pivotX;
+    const dy = vy - cannon.pivotY;
+    if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) {
+      return Math.PI / 2;
+    }
+    let phi = Math.atan2(-dy, -dx);
+    if (phi < 0) phi = 0;
+    if (phi > Math.PI) phi = Math.PI;
+    return phi;
+  }
+
+  function updateCannonAimFromPointer(dt) {
+    const cannon = CONFIG.cannon;
+    const vx = pointerOnCanvas ? pointerVirtualX : cannon.pivotX;
+    const vy = pointerOnCanvas ? pointerVirtualY : cannon.pivotY - 320;
+    const targetPhi = targetPhiFromVirtualPoint(vx, vy);
+    const turnSpeed =
+      (Math.PI / Math.max(0.4, cannon.sweepSecondsOneWay)) *
+      (runModifiers.sweepSpeedMult || 1) *
+      1.35;
+    const maxStep = turnSpeed * dt;
+    let delta = targetPhi - sweepPhi;
+    if (delta > maxStep) delta = maxStep;
+    if (delta < -maxStep) delta = -maxStep;
+    sweepPhi += delta;
+    if (sweepPhi < 0) sweepPhi = 0;
+    if (sweepPhi > Math.PI) sweepPhi = Math.PI;
+  }
+
   function syncCannonDebugHud() {
     if (!cannonDebugAngleEl || !cannonDebugMetaEl) return;
 
     const dir = getCannonAimDirection(sweepPhi);
     const aimRad = Math.atan2(dir.y, dir.x);
     const aimDeg = (aimRad * 180) / Math.PI;
-    const sweepLabel = sweepDir > 0 ? "varredura →" : "varredura ←";
 
     cannonDebugAngleEl.textContent = aimDeg.toFixed(1) + "°";
     cannonDebugMetaEl.textContent =
-      "φ " + sweepPhi.toFixed(2) + " rad · " + sweepLabel;
+      "φ " +
+      sweepPhi.toFixed(2) +
+      " rad · " +
+      (pointerOnCanvas ? "mira · mouse" : "mira · centro");
   }
 
   function getCannonAimDirection(phi) {
@@ -1217,16 +1274,7 @@
     if (cannonLockSweepTimer > 0) {
       cannonLockSweepTimer = Math.max(0, cannonLockSweepTimer - dt);
     } else {
-      const sweepSpeed =
-        (Math.PI / cannon.sweepSecondsOneWay) * runModifiers.sweepSpeedMult;
-      sweepPhi += sweepDir * sweepSpeed * dt;
-      if (sweepPhi >= Math.PI) {
-        sweepPhi = Math.PI;
-        sweepDir = -1;
-      } else if (sweepPhi <= 0) {
-        sweepPhi = 0;
-        sweepDir = 1;
-      }
+      updateCannonAimFromPointer(dt);
     }
 
     if (!gameOver) {
@@ -1716,6 +1764,15 @@
     gameOverOverlayEl.hidden = true;
   }
   window.addEventListener("resize", resizeCanvas);
+  canvas.addEventListener("mousemove", (event) => {
+    const v = clientToVirtual(event.clientX, event.clientY);
+    pointerVirtualX = v.x;
+    pointerVirtualY = v.y;
+    pointerOnCanvas = true;
+  });
+  canvas.addEventListener("mouseleave", () => {
+    pointerOnCanvas = false;
+  });
   resizeCanvas();
   startGameLoop();
 })();
