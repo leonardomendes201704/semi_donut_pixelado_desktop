@@ -23,6 +23,7 @@ Protótipo inicial em HTML + CSS + JavaScript puro.
 - `index.html` — página principal + HUD Multi.
 - `styles.css` — tela, fundo e HUD.
 - `cards.js` — catálogo das 27 cartas.
+- `assets/cards/` — artes WebP opcionais (`{id_da_carta}.webp`); usadas no draft e no inventário quando existem. Novas artes: exporte WebP (~quality 80) ou converta PNG com `ffmpeg -i carta.png -quality 82 carta.webp`.
 - `session-meta.js` — meta-progressão da sessão (fragmentos e loja).
 - `app.js` — jogo, colisão, Multi, draft e render.
 

@@ -50,6 +50,20 @@
 
   const catalogById = Object.fromEntries(CARD_CATALOG.map((c) => [c.id, c]));
 
+  /** IDs com WebP em assets/cards/{id}.webp */
+  const CARD_ART_IDS = new Set([
+    "cadencia_frenetica",
+    "mira_lenta",
+    "nucleo_denso",
+    "perfurador_mk2",
+    "varredura_dupla"
+  ]);
+
+  function getCardArtPath(cardId) {
+    if (!cardId || !CARD_ART_IDS.has(cardId)) return null;
+    return "assets/cards/" + cardId + ".webp";
+  }
+
   function createDefaultModifiers() {
     return {
       fireIntervalMult: 1,
@@ -183,6 +197,8 @@
   window.GameCards = {
     CARD_CATALOG,
     catalogById,
+    CARD_ART_IDS,
+    getCardArtPath,
     createDefaultModifiers,
     rollDraftOptions,
     applyCardPick,

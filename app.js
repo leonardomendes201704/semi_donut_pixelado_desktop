@@ -332,6 +332,27 @@
       playerProgress.xp.toFixed(1) + " / " + need + " XP";
   }
 
+  function draftCardInnerHtml(card) {
+    const art = GameCards.getCardArtPath(card.id);
+    if (art) {
+      return (
+        '<img class="draft-card__art" src="' +
+        art +
+        '" alt="' +
+        card.name.replace(/"/g, "&quot;") +
+        '" loading="lazy" decoding="async" />'
+      );
+    }
+    return (
+      '<span class="draft-card__body">' +
+      '<span class="draft-card__name">' +
+      card.name +
+      '</span><span class="draft-card__desc">' +
+      card.desc +
+      "</span></span>"
+    );
+  }
+
   function syncCardInventory() {
     if (!cardInventoryEl) return;
     cardInventoryEl.innerHTML = "";
@@ -340,33 +361,78 @@
     for (const id of ids) {
       const card = GameCards.catalogById[id];
       if (!card) continue;
+      const art = GameCards.getCardArtPath(id);
       let chip = document.createElement("span");
-      chip.className = "card-chip";
+      chip.className = "card-chip" + (art ? " card-chip--art" : "");
       chip.title = card.desc;
-      chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
+      const stackLabel =
+        card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
+      if (art) {
+        chip.innerHTML =
+          '<img class="card-chip__thumb" src="' +
+          art +
+          '" alt="" loading="lazy" decoding="async" /><span class="card-chip__label">' +
+          stackLabel +
+          "</span>";
+      } else {
+        chip.textContent = stackLabel;
+      }
       if (id === "freio_emergencia" && runModifiers.emergencyBrakeCharges > 0) {
         chip = document.createElement("button");
         chip.type = "button";
-        chip.className = "card-chip card-chip--usable";
+        chip.className =
+          "card-chip card-chip--usable" + (art ? " card-chip--art" : "");
         chip.title = card.desc;
-        chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
-        chip.textContent += " [" + runModifiers.emergencyBrakeCharges + "]";
+        const brakeLabel =
+          stackLabel + " [" + runModifiers.emergencyBrakeCharges + "]";
+        if (art) {
+          chip.innerHTML =
+            '<img class="card-chip__thumb" src="' +
+            art +
+            '" alt="" loading="lazy" decoding="async" /><span class="card-chip__label">' +
+            brakeLabel +
+            "</span>";
+        } else {
+          chip.textContent = brakeLabel;
+        }
         chip.addEventListener("click", () => useEmergencyBrake());
       } else if (id === "laser_fantasma" && runModifiers.ghostLaserCharges > 0) {
         chip = document.createElement("button");
         chip.type = "button";
-        chip.className = "card-chip card-chip--usable";
+        chip.className =
+          "card-chip card-chip--usable" + (art ? " card-chip--art" : "");
         chip.title = card.desc;
-        chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
-        chip.textContent += " [" + runModifiers.ghostLaserCharges + "]";
+        const laserLabel =
+          stackLabel + " [" + runModifiers.ghostLaserCharges + "]";
+        if (art) {
+          chip.innerHTML =
+            '<img class="card-chip__thumb" src="' +
+            art +
+            '" alt="" loading="lazy" decoding="async" /><span class="card-chip__label">' +
+            laserLabel +
+            "</span>";
+        } else {
+          chip.textContent = laserLabel;
+        }
         chip.addEventListener("click", () => useGhostLaser());
       } else if (id === "limpeza_borda" && runModifiers.borderCleanCharges > 0) {
         chip = document.createElement("button");
         chip.type = "button";
-        chip.className = "card-chip card-chip--usable";
+        chip.className =
+          "card-chip card-chip--usable" + (art ? " card-chip--art" : "");
         chip.title = card.desc;
-        chip.textContent = card.name + (ownedCards[id] > 1 ? " ×" + ownedCards[id] : "");
-        chip.textContent += " [" + runModifiers.borderCleanCharges + "]";
+        const cleanLabel =
+          stackLabel + " [" + runModifiers.borderCleanCharges + "]";
+        if (art) {
+          chip.innerHTML =
+            '<img class="card-chip__thumb" src="' +
+            art +
+            '" alt="" loading="lazy" decoding="async" /><span class="card-chip__label">' +
+            cleanLabel +
+            "</span>";
+        } else {
+          chip.textContent = cleanLabel;
+        }
         chip.addEventListener("click", () => useBorderClean());
       }
       cardInventoryEl.appendChild(chip);
@@ -395,24 +461,18 @@
   }
 
   function renderDraftUI() {
-    if (!levelDraftChoicesEl || !levelDraftTitleEl) return;
-    levelDraftTitleEl.textContent =
-      "Nível " + playerProgress.level + " — escolha uma carta";
-    if (levelDraftSubtitleEl) {
-      levelDraftSubtitleEl.textContent =
-        "Toque em uma das cartas neste painel (centro). O jogo está pausado até você escolher.";
-    }
+    if (!levelDraftChoicesEl) return;
     levelDraftChoicesEl.innerHTML = "";
     for (const card of draftState.options) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "draft-card draft-card--" + (card.rarity || "common");
-      btn.innerHTML =
-        '<span class="draft-card__name">' +
-        card.name +
-        '</span><span class="draft-card__desc">' +
-        card.desc +
-        "</span>";
+      btn.className =
+        "draft-card draft-card--" +
+        (card.rarity || "common") +
+        (GameCards.getCardArtPath(card.id) ? " draft-card--illustrated" : "");
+      btn.title = card.name + " — " + card.desc;
+      btn.setAttribute("aria-label", btn.title);
+      btn.innerHTML = draftCardInnerHtml(card);
       btn.addEventListener("click", () => pickDraftCard(card.id));
       levelDraftChoicesEl.appendChild(btn);
     }
