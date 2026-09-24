@@ -95,6 +95,8 @@
   let waveDescentMult = 1;
   let arcClearBusy = false;
   let arcClearDelayTimer = 0;
+  let activeShapeLayout = "donut";
+  let asteroids = [];
 
   const playerLevelEl = document.getElementById("playerLevel");
   const playerXpFillEl = document.getElementById("playerXpFill");
@@ -152,6 +154,8 @@
     waveDescentMult = 1;
     arcClearBusy = false;
     arcClearDelayTimer = 0;
+    activeShapeLayout = "donut";
+    asteroids = [];
     if (levelDraftOverlayEl) levelDraftOverlayEl.hidden = true;
     setDraftUiOpen(false);
     syncPlayerHud();
@@ -892,7 +896,7 @@
     arcClearDelayTimer = 0;
     draftPaused = false;
     spawnArcClearFloater(
-      runWave === 2 ? "Onda 2 — dupla hélice" : "Onda " + runWave
+      runWave === 2 ? "Onda 2 — asteroides" : "Onda " + runWave
     );
   }
 
@@ -1144,6 +1148,7 @@
 
     update(dt) {
       updateArcClearTimer(dt);
+      updateAsteroidField(dt);
       updateShapeRotation(dt);
       updateDescent(dt);
       updateCannon(dt);
@@ -1184,6 +1189,7 @@
   }
 
   function getShapeRotationRad() {
+    if (activeShapeLayout === "asteroids") return 0;
     return isShapeRotationActive() ? shapeRotationRad : 0;
   }
 
@@ -1235,6 +1241,11 @@
   }
 
   function updateShapeRotation(dt) {
+    if (activeShapeLayout === "asteroids") {
+      shapeRotationRad = 0;
+      shapeRotationDir = 1;
+      return;
+    }
     if (gameOver || draftPaused || !isShapeRotationActive()) {
       if (!isShapeRotationActive()) {
         shapeRotationRad = 0;
@@ -1818,47 +1829,128 @@
     }
   }
 
-  /** Onda 2: duas fitas entrelaçadas + degraus (rungs). */
-  function buildDoubleHelixCells() {
+  function rebuildCellLookup() {
+    cellLookup.clear();
+    for (const cell of cells) {
+      if (!cell.active) continue;
+      cellLookup.set(cell.gridKey, cell);
+    }
+  }
+
+  function syncAsteroidCellPositions() {
     const size = CONFIG.pixelSize;
     const half = size / 2;
-    const helixRadius = 102;
-    const phaseStep = 0.068;
-    const yStart = CONFIG.centerY - CONFIG.outerRadius + 8;
-    const yEnd = CONFIG.centerY - 48;
+    for (const cell of cells) {
+      if (!cell.active || cell.asteroidId == null) continue;
+      const ast = asteroids[cell.asteroidId];
+      if (!ast) continue;
+      const cos = Math.cos(ast.angle);
+      const sin = Math.sin(ast.angle);
+      const rx = cell.localDx * cos - cell.localDy * sin;
+      const ry = cell.localDx * sin + cell.localDy * cos;
+      const cx = ast.cx + rx;
+      const cy = ast.cy + ry;
+      cell.cx = cx;
+      cell.cy = cy;
+      cell.x = cx - half;
+      cell.y = cy - half;
+      const gridGx = Math.floor((cell.x - gridMinX) / size);
+      const gridGy = Math.floor((cell.y - gridMinY) / size);
+      cell.gridKey = cellGridKey(gridGx, gridGy);
+    }
+    rebuildCellLookup();
+  }
 
-    gridMinX = CONFIG.centerX - helixRadius - size * 8;
-    gridMinY = yStart - size * 2;
+  function updateAsteroidField(dt) {
+    if (activeShapeLayout !== "asteroids" || gameOver || draftPaused) return;
+    if (!asteroids.length) return;
+    for (const ast of asteroids) {
+      ast.angle += ast.spin * dt;
+    }
+    syncAsteroidCellPositions();
+    Game.markStaticDirty();
+  }
 
-    let row = 0;
-    for (let y = yStart; y <= yEnd; y += size) {
-      const phase = row * phaseStep;
-      const cy = y + half;
-      const cxA = CONFIG.centerX + Math.cos(phase) * helixRadius;
-      const cxB = CONFIG.centerX + Math.cos(phase + Math.PI) * helixRadius;
+  function appendAsteroidVoxel(asteroidId, localDx, localDy, sectorIndex) {
+    const size = CONFIG.pixelSize;
+    const half = size / 2;
+    const ast = asteroids[asteroidId];
+    const cos = Math.cos(ast.angle);
+    const sin = Math.sin(ast.angle);
+    const rx = localDx * cos - localDy * sin;
+    const ry = localDx * sin + localDy * cos;
+    const cx = ast.cx + rx;
+    const cy = ast.cy + ry;
+    const x = cx - half;
+    const y = cy - half;
+    const gridGx = Math.floor((x - gridMinX) / size);
+    const gridGy = Math.floor((y - gridMinY) / size);
+    const gridKey = cellGridKey(gridGx, gridGy);
+    if (cellLookup.has(gridKey)) return;
 
-      const sectorA = row % 3;
-      const sectorB = 3 + (row % 2);
+    const sector = CONFIG.sectors[sectorIndex];
+    cells.push({
+      x,
+      y,
+      cx,
+      cy,
+      sectorIndex,
+      color: sector.color,
+      glow: sector.glow,
+      active: true,
+      gridKey,
+      asteroidId,
+      localDx,
+      localDy
+    });
+    cellLookup.set(gridKey, cells[cells.length - 1]);
+  }
 
-      const xA =
-        Math.round((cxA - half - gridMinX) / size) * size + gridMinX;
-      const xB =
-        Math.round((cxB - half - gridMinX) / size) * size + gridMinX;
+  /** Onda 2: asteroides de tamanhos variados, cada um com cor de setor e rotação própria. */
+  function buildAsteroidFieldCells() {
+    const size = CONFIG.pixelSize;
+    asteroids = [];
 
-      appendGridCell(xA, y, sectorA);
-      appendGridCell(xB, y, sectorB);
+    gridMinX = 80;
+    gridMinY = CONFIG.centerY - CONFIG.outerRadius - 80;
 
-      if (row % 5 === 0) {
-        const left = Math.min(xA, xB);
-        const right = Math.max(xA, xB);
-        const rungSector = (row / 5) % 5;
-        for (let rx = left; rx <= right; rx += size) {
-          appendGridCell(rx, y, rungSector);
+    const specs = [
+      { cx: 360, cy: CONFIG.centerY - 320, r: 6, sector: 0, spin: 0.62 },
+      { cx: 540, cy: CONFIG.centerY - 400, r: 3, sector: 1, spin: -0.85 },
+      { cx: 720, cy: CONFIG.centerY - 260, r: 5, sector: 2, spin: 0.48 },
+      { cx: 900, cy: CONFIG.centerY - 380, r: 4, sector: 3, spin: -0.58 },
+      { cx: 1080, cy: CONFIG.centerY - 300, r: 7, sector: 4, spin: 0.38 },
+      { cx: 480, cy: CONFIG.centerY - 180, r: 2, sector: 0, spin: -1.05 },
+      { cx: 980, cy: CONFIG.centerY - 200, r: 4, sector: 2, spin: 0.72 }
+    ];
+
+    for (const spec of specs) {
+      const id = asteroids.length;
+      asteroids.push({
+        cx: spec.cx,
+        cy: spec.cy,
+        angle: Math.random() * Math.PI * 2,
+        spin: spec.spin,
+        sectorIndex: spec.sector
+      });
+
+      for (let dy = -spec.r; dy <= spec.r; dy++) {
+        for (let dx = -spec.r; dx <= spec.r; dx++) {
+          const dist = Math.hypot(dx, dy);
+          if (dist > spec.r + 0.15) continue;
+          if (dist > spec.r - 0.35 && Math.random() > 0.55) continue;
+          if (dist < spec.r * 0.35 && Math.random() > 0.45) continue;
+          appendAsteroidVoxel(
+            id,
+            dx * size,
+            dy * size,
+            spec.sector
+          );
         }
       }
-
-      row += 1;
     }
+
+    syncAsteroidCellPositions();
   }
 
   function buildCells() {
@@ -1866,8 +1958,11 @@
     cellLookup = new Map();
 
     if (runWave === 2) {
-      buildDoubleHelixCells();
+      activeShapeLayout = "asteroids";
+      buildAsteroidFieldCells();
     } else {
+      activeShapeLayout = "donut";
+      asteroids = [];
       buildSemiDonutCells();
     }
   }
