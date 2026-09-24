@@ -891,7 +891,9 @@
     arcClearBusy = false;
     arcClearDelayTimer = 0;
     draftPaused = false;
-    spawnArcClearFloater("Onda " + runWave);
+    spawnArcClearFloater(
+      runWave === 2 ? "Onda 2 — dupla hélice" : "Onda " + runWave
+    );
   }
 
   function updateArcClearTimer(dt) {
@@ -1743,10 +1745,30 @@
     }
   }
 
-  function buildCells() {
-    cells = [];
-    cellLookup = new Map();
+  function appendGridCell(x, y, sectorIndex) {
+    const size = CONFIG.pixelSize;
+    const sector = CONFIG.sectors[sectorIndex];
+    const gridGx = Math.floor((x - gridMinX) / size);
+    const gridGy = Math.floor((y - gridMinY) / size);
+    const gridKey = cellGridKey(gridGx, gridGy);
+    if (cellLookup.has(gridKey)) return;
 
+    const half = size / 2;
+    cells.push({
+      x,
+      y,
+      cx: x + half,
+      cy: y + half,
+      sectorIndex,
+      color: sector.color,
+      glow: sector.glow,
+      active: true,
+      gridKey
+    });
+    cellLookup.set(gridKey, cells[cells.length - 1]);
+  }
+
+  function buildSemiDonutCells() {
     const size = CONFIG.pixelSize;
     const half = size / 2;
 
@@ -1767,17 +1789,15 @@
         const dy = cy - CONFIG.centerY;
         const radius = Math.hypot(dx, dy);
 
-        // Mantém apenas a metade superior do anel.
         if (dy >= 0) continue;
         if (radius < CONFIG.innerRadius || radius > CONFIG.outerRadius) continue;
 
         let angle = Math.atan2(dy, dx);
         if (angle < 0) angle += Math.PI * 2;
 
-        // No canvas, o arco superior ocupa de PI até 2PI.
         if (angle < Math.PI || angle > Math.PI * 2) continue;
 
-        const normalized = (angle - Math.PI) / Math.PI; // 0..1
+        const normalized = (angle - Math.PI) / Math.PI;
         let sectorIndex = Math.floor(normalized * 5);
 
         if (sectorIndex < 0) sectorIndex = 0;
@@ -1786,7 +1806,6 @@
         const sectorStart = Math.PI + (Math.PI / 5) * sectorIndex;
         const sectorEnd = sectorStart + Math.PI / 5;
 
-        // Cria uma separação visual entre as cinco partes.
         if (
           angle < sectorStart + CONFIG.sectorGapRadians ||
           angle > sectorEnd - CONFIG.sectorGapRadians
@@ -1794,24 +1813,62 @@
           continue;
         }
 
-        const sector = CONFIG.sectors[sectorIndex];
-        const gridGx = Math.floor((x - minX) / size);
-        const gridGy = Math.floor((y - minY) / size);
-        const gridKey = cellGridKey(gridGx, gridGy);
-
-        cells.push({
-          x,
-          y,
-          cx,
-          cy,
-          sectorIndex,
-          color: sector.color,
-          glow: sector.glow,
-          active: true,
-          gridKey
-        });
-        cellLookup.set(gridKey, cells[cells.length - 1]);
+        appendGridCell(x, y, sectorIndex);
       }
+    }
+  }
+
+  /** Onda 2: duas fitas entrelaçadas + degraus (rungs). */
+  function buildDoubleHelixCells() {
+    const size = CONFIG.pixelSize;
+    const half = size / 2;
+    const helixRadius = 102;
+    const phaseStep = 0.068;
+    const yStart = CONFIG.centerY - CONFIG.outerRadius + 8;
+    const yEnd = CONFIG.centerY - 48;
+
+    gridMinX = CONFIG.centerX - helixRadius - size * 8;
+    gridMinY = yStart - size * 2;
+
+    let row = 0;
+    for (let y = yStart; y <= yEnd; y += size) {
+      const phase = row * phaseStep;
+      const cy = y + half;
+      const cxA = CONFIG.centerX + Math.cos(phase) * helixRadius;
+      const cxB = CONFIG.centerX + Math.cos(phase + Math.PI) * helixRadius;
+
+      const sectorA = row % 3;
+      const sectorB = 3 + (row % 2);
+
+      const xA =
+        Math.round((cxA - half - gridMinX) / size) * size + gridMinX;
+      const xB =
+        Math.round((cxB - half - gridMinX) / size) * size + gridMinX;
+
+      appendGridCell(xA, y, sectorA);
+      appendGridCell(xB, y, sectorB);
+
+      if (row % 5 === 0) {
+        const left = Math.min(xA, xB);
+        const right = Math.max(xA, xB);
+        const rungSector = (row / 5) % 5;
+        for (let rx = left; rx <= right; rx += size) {
+          appendGridCell(rx, y, rungSector);
+        }
+      }
+
+      row += 1;
+    }
+  }
+
+  function buildCells() {
+    cells = [];
+    cellLookup = new Map();
+
+    if (runWave === 2) {
+      buildDoubleHelixCells();
+    } else {
+      buildSemiDonutCells();
     }
   }
 
