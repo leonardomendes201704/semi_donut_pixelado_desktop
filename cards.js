@@ -52,10 +52,32 @@
 
   /** IDs com WebP em assets/cards/{id}.webp */
   const CARD_ART_IDS = new Set([
+    "arco_iris",
+    "azul_profundo",
     "cadencia_frenetica",
+    "cannao_fixo",
+    "carta_misteriosa",
+    "combo_seguro",
+    "contrato_arriscado",
+    "corrente_eletrica",
+    "escada_curta",
+    "explosao_setorial",
+    "fragmentacao",
+    "freio_emergencia",
+    "gravidade_leve",
+    "impeto_vermelho",
+    "laser_fantasma",
+    "limpeza_borda",
+    "loja_bolso",
     "mira_lenta",
     "nucleo_denso",
+    "ouro_amarelo",
     "perfurador_mk2",
+    "rajada_inicial",
+    "sangue_laranja",
+    "tiro_guiado",
+    "tick_extra",
+    "trono_roxo",
     "varredura_dupla"
   ]);
 

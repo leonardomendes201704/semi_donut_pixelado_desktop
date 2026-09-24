@@ -58,8 +58,8 @@ SemiDonutPrototype.rebuild()
 ## Limpar o arco (onda)
 
 - Destruir **todos** os pixels pausa a run (~6 s de descida), dá **+15 fragmentos** (sessão), bônus de **XP/Multi** e o texto **Arco destruído**.
-- Após **3 s**, abre um **draft** (escolha de carta); ao fechar, entra um **novo semi-donut** (**Onda 2+**) com descida um pouco mais rápida a cada onda.
-- **Onda 1:** semi-donut · **Onda 2:** campo de **asteroides** (tamanhos variados, uma cor por corpo, rotação própria + descida) · **Onda 3+:** semi-donut de novo.
+- Após **3 s**, abre um **draft** (escolha de carta); ao fechar, entra o próximo layout (**Onda 2+**) com descida um pouco mais rápida a cada onda.
+- **Onda 1:** campo de **asteroides** (tamanhos variados, uma cor por corpo + descida) · **Onda 2+:** semi-donut.
 
 ## Multi (resumo)
 
